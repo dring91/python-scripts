@@ -1,0 +1,3 @@
+#!/bin/bash
+
+python -m cProfile $1.py -f ../../685558.ocoee.nics.utk.edu/N_1_traj_eps100_T50_1_unwrapped.xyz -n $2 > $1_$2.prf

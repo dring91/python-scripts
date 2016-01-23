@@ -1,0 +1,34 @@
+###########
+#
+#   Extensible Program for Analysis
+#   
+###########
+
+Main Driver - Analyze.py
+
+The aim of this program is to operate on simple, modest sets of numbers that can be read in "stream-like" fashion. It will hopefully replace or supplement some of the operations lacking in gnuplot (e.g. - quickly finding a mean). The main program should be robust and completely separate from the "plug-ins". The plug-ins should be short and need not be heavily optimized. 
+
+For example:
+
+def mean(data):
+  for i in data:
+    mu += line
+    N += 1
+  return mu / N
+
+A list of plug-ins implemented so far:
+ - sum (with weighting, it can be used to take a mean or any linear combination)
+ - product (with weighting, it can take a geometric mean)
+ - first (first element of list or row)
+ - last (last element of a list or row)
+ - head (all elements except last, i.e. complement of last)
+ - tail (all elements except first, i.e. complement of first)
+
+ -- analyze file plug-in output --
+
+  read file data as a chunk
+  analyze data using plug-in
+  write to file or stdout
+
+--- Extension ideas ---
+--  - write a plug-in class
