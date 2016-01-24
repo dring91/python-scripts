@@ -47,7 +47,7 @@ def makeHistogram(atoms,nBins,lower):
   hist = np.zeros((nBins,2))
   binSize = (1-lower)/float(nBins)
   hist[:,0] = (np.arange(nBins)+0.5)*binSize+lower
-  atoms = atoms[np.logical_and(atoms > lower, atoms <= 1)
+  atoms = atoms[np.logical_and(atoms > lower, atoms <= 1)]
   
   for atom in atoms:
     if lower < atom <= 1:
@@ -205,9 +205,18 @@ def main():
  
       polymers = frame[frame[:,0] == 1][:,3]
 
+      # Is all this scaling really necessary?
       polymers -= box[2,0]
       polymers /= (box[2,1] - box[2,0])
       lower = (polymers.min() - box[2,0])/(box[2,1] - box[2,0])
+      # Count number of atoms outside the packing
+      # - if the fraction of atoms outside the packing is less than the cut-off,
+      #   then use method 1 to calculate height
+      # - if the fraction is greater, then use method 2
+      # 
+      # Method 1: height = rho_T/rho_b*C + lower
+      # Method 2: Adjust cut-off with rho_T*C - rho_b*(-lower) and integrate rho
+      #           within the packing
       density = makeHistogram(polymers, nSlices, lower)
       density[:,1] /= (box[2,1] - box[2,0])
       
