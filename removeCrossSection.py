@@ -4,13 +4,16 @@ import numpy as np
 from sys import argv, exit
 from getopt import *
 
+NDIMS = 3
+AREA = 100*100
+
 def getArgs(argv):
   
   try:
-    opts, args = getopt(argv[1:],'t:o:n:i:s:d:')
+    opts, args = getopt(argv[1:],'t:o:n:i:s:')
   except GetoptError:
     print 'randomWalk.py -t <filename> -o <filename> -n <steps> 
-                         -i <nInsert> -s <nSlices> -d <binWidth>'
+                         -i <nInsert> -s <nSlices>'
     exit(2)
   for opt, arg in opts:
     if opt == '-t':
@@ -23,10 +26,8 @@ def getArgs(argv):
       insertions = arg
     elif opt == '-s':
       slices = arg
-    elif opt == '-d':
-      delta = arg
 
-  return trajFile, outFile, int(steps), int(insertions), int(slices), float(delta)
+  return trajFile, outFile, int(steps), int(insertions), int(slices)
   
 def readFrame(file,nCols=4):
   line = file.readline().strip()
@@ -40,22 +41,44 @@ def readFrame(file,nCols=4):
 
   return time, atoms
 
+def interpolate(x, low, high):
+  if x == low[0]:
+    return low[1]
+  elif x == high[0]:
+    return high[1]
+  elif x < high[0] and x > low[0]:
+    slope = (high[1] - low[1])/(high[0] - low[0])
+    return slope*(x - low[0]) + low[1]
+  else:
+    print 'x out of range'
+    exit(0)
+
+def integrateHeight(data, stopIntegrationAt):
+  height = data[0,0]
+  prev = data[0]
+  for row in data[1:]:
+    if row[1] > stopIntegrationAt >= prev[1]:
+      height = interpolate(stopIntegrationAt, prev[::-1], row[::-1])
+      break
+    prev = row
+  
+  return height
+ 
 def makeHistogram(atoms,nBins,limits):
-  area = 100*100
   binSize = (limits[1]-limits[0])/float(nBins)
-  freq = np.zeros((nBins,2))
-  freq[:,0] = (np.arange(nBins)+0.5)*binSize+limits[0]
+  hist = np.zeros((nBins,2))
+  hist[:,0] = (np.arange(nBins)+0.5)*binSize / limits[1]
   atoms = atoms[np.logical_and(atoms >= limits[0], atoms < limits[1])]
   bins = ((atoms - limits[0]) / nBins).astype(int)
   # loop through bins and add atoms
   for bin in range(nBins):
-    freq[bin,1] = (bins == bin).sum()
+    hist[bin,1] = (bins == bin).sum()
     # try:
     # except IndexError:
     #   print "Particle outside box"
-  freq[:,1] /= float(area*binSize)
+  hist[:,1] /= float(AREA*binSize)
   
-  return freq
+  return hist
   
 def PBC(dx,x,interval):
   mask = (dx < interval[:,0])
@@ -139,9 +162,9 @@ def insert(insertions, center, rotation, box, accepted, (a,b,r)):
 
   return accepted
 
-def calcPorosity(particles, box, nInsert, nSlices, params, nAtoms, nPart, nDim):
+def calcPorosity(particles, box, nInsert, nSlices, params):
   dSlice = (box[2,1] - box[2,0]) / nSlices
-  particles = particles.reshape((nPart,nAtoms,nDim))
+  particles = particles.reshape((params[4],params[3],NDIMS))
 
   # unwrap particle coordinates
   particles = unwrap(particles, box)
@@ -169,97 +192,84 @@ def calcPorosity(particles, box, nInsert, nSlices, params, nAtoms, nPart, nDim):
 
   return porosity
 
+def findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt):
+  porosity = calcPorosity(particles, box, nInsert, nSlices, params)
+  # How does this work with findHeight?
+  density = makeHistogram(polymers, nSlices, box[2])
+  density[:,1] /= porosity
+  # Integrate density within packing
+  height = integrateHeight(density, stopIntegrationAt)
+
+  return density, height
+
 def main():
   
   # Command line args processing
-  trajFile, outFile, nFrames, nInsert, nSlices, delta = getArgs(argv)
+  trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   
   porosity = np.zeros((nSlices,2))
   porosity[:,0] = (np.arange(nSlices) + 0.5) / nSlices
   outFile = '%s_N5_%d' % (outFile, nInsert)
 
-  # params = (a,b,r_cut)
-  params = (25*0.5, 50*0.5, 0)
-  nAtoms = 4684
-  nPart = 54
-  nDim = 3
+  # params = (a,b,r_cut,nAtomsPerPart,nPart)
+  params = (25*0.5, 50*0.5, 0, 4684, 54)
 
-  with open(outFile, 'w') as otp:
-    otp.write('# Porosity for N = 5 oversaturated infiltration\n')
+  with open(outFile+'_density', 'w') as otp:
+    otp.write('# \n')
+  with open(outFile+'_height', 'w') as otp:
+    otp.write('# \n')
 
   with open(trajFile,'r') as inp:
     for n in range(nFrames):
-      # read and filter data
+      # read data and separate by atomtypes
       time, frame = readFrame(inp)
       particles = frame[frame[:,0] >= 3][:,1:]
+      polymers = frame[frame[:,0] == 1][:,3]
+      pmin = polymers.min()
 
       # make box
-      box = np.zeros((3,2))
+      box = np.zeros((NDIMS,2))
       box[:,0] = particles.min(0)
       box[:,1] = particles.max(0)
 
-      porosity = calcPorosity(particles, box, nInsert, nSlices, params, nAtoms, nPart, nDim)
- 
-      polymers = frame[frame[:,0] == 1][:,3]
-
-      # Is all this scaling really necessary?
-      # Count number of atoms outside the packing
-      # - if the fraction of atoms outside the packing exceeds the cut-off,
-      #   then use method 1 to calculate height
-      # - if the fraction is less, then use method 2
-      # 
-      # Method 1: height = rho_T/rho_b*C + lower
-      # Method 2: Adjust cut-off with rho_T*C - rho_b*(-lower) and integrate rho
-      #           within the packing
+      # Calculate important system values
       nOutside = (polymers < box[2,0]).sum()
-      totalDensity = (polymers < box[2,1]).sum() / (box[2,1] - polymers.min()) / 100**2
-      bulkDensity = nOutside / (box[2,0] - polymers.min()) / 100**2
-      scaledLowerBound = (polymers.min() - box[2,0])/(box[2,1] - box[2,0])
-      # Is this the best place to define cut-off? Do before defining porosity
-      cutOff = 0.85
-      if nOutside >= cutOff * nPoly:
-        height = totalDensity / bulkDensity * cutOff + scaledLowerBound
+      totalDensity = (polymers < box[2,1]).sum() / (box[2,1] - pmin) / AREA
+      bulkDensity = nOutside / (box[2,0] - pmin) / AREA
+      scaledLowerBound = (pmin - box[2,0])/(box[2,1] - box[2,0])
+      
+      cutOff85 = 0.85
+      cutOff99 = 0.99
+      if bulkDensity >= cutOff99 * totalDensity:
+        height85 = totalDensity / bulkDensity * cutOff85 + scaledLowerBound
+        height99 = totalDensity / bulkDensity * cutOff99 + scaledLowerBound
+      elif bulkDensity >= cutOff85 * totalDensity:
+        height85 = totalDensity / bulkDensity * cutOff85 + scaledLowerBound
+        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * scaledLowerBound
+        density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
       else:
-        stopIntegrationAt = totalDensity * cutOff + bulkDensity * scaledLowerBound
-        density = makeHistogram(polymers, nSlices, box[2])
-        # Integrate density within packing
+        stopIntegrationAt = totalDensity * cutOff85 + bulkDensity * scaledLowerBound
+        density85, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
+        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * scaledLowerBound
+        density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
+
+      # output density and height values
+      with open(outFile+'_density', 'a') as otp:
+        header = 'time: %d\n#  z  density\n' % time
+        np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n')
+      with open(outFile+'_height', 'a') as otp:
+        np.savetxt(otp, [time, height], fmt='%.5f', header='time  z (sigma)\n')
       
-      with open(outFile, 'a') as otp:
-        np.savetxt(otp, 
-                   ,
-                   fmt='%.5f',
-                   header='# time: %d\n#   z (sigma)   porosity\n' % time,
-                   footer='\n',
-                   comments='')
-      
-    print 'Finished analyzing trajectory'
+  print 'Finished analyzing trajectory'
 
 if __name__ == '__main__':
   main()
 
-"""
-n = n_b + n_p
-n = rho_b * v_b + rho_p * v_p
-rho = rho_b * (h_b/L) + rho_p * (h_p/L)
-
-Histgram diagram
-
-Top of packing
------------------------------------------|8 
-                                         |7
-                                         |6
-                                         |5
-                                         |4
-                                         |3
-                                         |2
-Bottom of packing                        |1
------------------------------------------|0 
-Top of Polymer bulk                      |1 
-                                         |2 t dependent
-                                         |3
------------------------------------------|4
-Bottom of Polymer bulk
-
-packing doesn't change height, but the polymer bulk does
-Is it necessary to bin below the bottom of the packing?
-"""
+# Count number of atoms outside the packing
+# - if the fraction of atoms outside the packing exceeds the cut-off,
+#   then use method 1 to calculate height
+# - if the fraction is less, then use method 2
+# 
+# Method 1: height = rho_T/rho_b*C + lower
+# Method 2: Adjust cut-off with rho_T*C - rho_b*(-lower) and integrate rho
+#           within the packing
