@@ -12,8 +12,8 @@ def getArgs(argv):
   try:
     opts, args = getopt(argv[1:],'t:o:n:i:s:')
   except GetoptError:
-    print 'randomWalk.py -t <filename> -o <filename> -n <steps> 
-                         -i <nInsert> -s <nSlices>'
+    print """randomWalk.py -t <filename> -o <filename> -n <steps> 
+                           -i <nInsert> -s <nSlices>"""
     exit(2)
   for opt, arg in opts:
     if opt == '-t':
@@ -107,7 +107,7 @@ def calcTransformations(frame, box):
   for p,particle in enumerate(frame):
     # calculate and remove the center of mass
     centers[p] = frame[p].mean(0)
-    particle = frame[p] - COM
+    particle = frame[p] - centers[p]
     
     # determine the axes to rotate onto
     radii = np.sqrt(np.einsum('...i,...i',particle,particle))
@@ -163,6 +163,8 @@ def insert(insertions, center, rotation, box, accepted, (a,b,r)):
   return accepted
 
 def calcPorosity(particles, box, nInsert, nSlices, params):
+  porosity = np.zeros((nSlices,2))
+  porosity[:,0] = (np.arange(nSlices) + 0.5) / nSlices
   dSlice = (box[2,1] - box[2,0]) / nSlices
   particles = particles.reshape((params[4],params[3],NDIMS))
 
@@ -179,11 +181,10 @@ def calcPorosity(particles, box, nInsert, nSlices, params):
   # test for overlap
   test = np.zeros_like(points[:,0],dtype=bool)
   for i,particle in enumerate(particles):
-    test = insert(points, centers, rotations, box, test, params)
+    test = insert(points, centers[i], rotations[i], box, test, params[:3])
 
   # partition points by vertical height
   bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
-  porosity[:,1] = np.zeros(nSlices)
 
   # calculate the ratio of accepted to total insertions
   for j in range(nSlices):
@@ -196,7 +197,7 @@ def findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrati
   porosity = calcPorosity(particles, box, nInsert, nSlices, params)
   # How does this work with findHeight?
   density = makeHistogram(polymers, nSlices, box[2])
-  density[:,1] /= porosity
+  density[:,1] /= porosity[:,1]
   # Integrate density within packing
   height = integrateHeight(density, stopIntegrationAt)
 
@@ -207,17 +208,15 @@ def main():
   # Command line args processing
   trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   
-  porosity = np.zeros((nSlices,2))
-  porosity[:,0] = (np.arange(nSlices) + 0.5) / nSlices
-  outFile = '%s_N5_%d' % (outFile, nInsert)
+  outFile = '%s_%d' % (outFile, nInsert)
 
   # params = (a,b,r_cut,nAtomsPerPart,nPart)
   params = (25*0.5, 50*0.5, 0, 4684, 54)
 
-  with open(outFile+'_density', 'w') as otp:
-    otp.write('# \n')
-  with open(outFile+'_height', 'w') as otp:
-    otp.write('# \n')
+  with open('density_'+outFile, 'w') as otp:
+    otp.write('# Density profiles\n')
+  with open('height_'+outFile, 'w') as otp:
+    otp.write('# height profiles at two cut-offs\n')
 
   with open(trajFile,'r') as inp:
     for n in range(nFrames):
@@ -240,10 +239,13 @@ def main():
       
       cutOff85 = 0.85
       cutOff99 = 0.99
-      if bulkDensity >= cutOff99 * totalDensity:
+      density85 = None
+      density99 = None
+      # this condition is always true. How should it be tweaked?
+      if bulkDensity * scaledLowerBound >= cutOff99 * totalDensity * (1 + scaledLowerBound):
         height85 = totalDensity / bulkDensity * cutOff85 + scaledLowerBound
         height99 = totalDensity / bulkDensity * cutOff99 + scaledLowerBound
-      elif bulkDensity >= cutOff85 * totalDensity:
+      elif bulkDensity * scaledLowerBound >= cutOff85 * totalDensity * (1+scaledLowerBound):
         height85 = totalDensity / bulkDensity * cutOff85 + scaledLowerBound
         stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * scaledLowerBound
         density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
@@ -253,12 +255,23 @@ def main():
         stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * scaledLowerBound
         density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
 
+      density = np.ones((nSlices,3))
+      if density99 is None:
+        density = [[0, bulkDensity, bulkDensity]]
+      elif density85 is None:
+        density[:,0] = density99[:,0]
+        density[:,1] *= bulkDensity
+        density[:,2] = density99[:,1]
+      else:
+        density[:,:2] = density85
+        density[:,2] = density99[:,1]
+
       # output density and height values
-      with open(outFile+'_density', 'a') as otp:
-        header = 'time: %d\n#  z  density\n' % time
-        np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n')
-      with open(outFile+'_height', 'a') as otp:
-        np.savetxt(otp, [time, height], fmt='%.5f', header='time  z (sigma)\n')
+      with open('density_'+outFile, 'a') as otp:
+        header = '# time: %d\n#  z  density85  density99' % time
+        np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
+      with open('height_'+outFile, 'a') as otp:
+        np.savetxt(otp, [[time, height85, height99]], fmt='%.5f',comments='')
       
   print 'Finished analyzing trajectory'
 
