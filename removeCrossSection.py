@@ -3,8 +3,6 @@
 import numpy as np
 from sys import argv, exit
 from getopt import *
-import matplotlib.pyplot as plt
-# from numpy.stats import mode
 
 def getArgs(argv):
   
@@ -42,23 +40,22 @@ def readFrame(file,nCols=4):
 
   return time, atoms
 
-def makeHistogram(atoms,nBins,lower):
+def makeHistogram(atoms,nBins,limits):
   area = 100*100
-  hist = np.zeros((nBins,2))
-  binSize = (1-lower)/float(nBins)
-  hist[:,0] = (np.arange(nBins)+0.5)*binSize+lower
-  atoms = atoms[np.logical_and(atoms > lower, atoms <= 1)]
+  binSize = (limits[1]-limits[0])/float(nBins)
+  freq = np.zeros((nBins,2))
+  freq[:,0] = (np.arange(nBins)+0.5)*binSize+limits[0]
+  atoms = atoms[np.logical_and(atoms >= limits[0], atoms < limits[1])]
+  bins = ((atoms - limits[0]) / nBins).astype(int)
+  # loop through bins and add atoms
+  for bin in range(nBins):
+    freq[bin,1] = (bins == bin).sum()
+    # try:
+    # except IndexError:
+    #   print "Particle outside box"
+  freq[:,1] /= float(area*binSize)
   
-  for atom in atoms:
-    if lower < atom <= 1:
-      bin = int((atom-lower)/binSize)
-      try:
-        hist[bin,1] += 1
-      except IndexError:
-        print "Particle outside box"
-  hist[:,1] /= area*binSize
-  
-  return hist
+  return freq
   
 def PBC(dx,x,interval):
   mask = (dx < interval[:,0])
@@ -167,7 +164,7 @@ def calcPorosity(particles, box, nInsert, nSlices, params, nAtoms, nPart, nDim):
 
   # calculate the ratio of accepted to total insertions
   for j in range(nSlices):
-    accepted = np.logical_not(test[bins == j])
+    insertions = np.logical_not(test[bins == j])
     porosity[j,1] = insertions.sum() / float(len(insertions))
 
   return porosity
@@ -206,19 +203,26 @@ def main():
       polymers = frame[frame[:,0] == 1][:,3]
 
       # Is all this scaling really necessary?
-      polymers -= box[2,0]
-      polymers /= (box[2,1] - box[2,0])
-      lower = (polymers.min() - box[2,0])/(box[2,1] - box[2,0])
       # Count number of atoms outside the packing
-      # - if the fraction of atoms outside the packing is less than the cut-off,
+      # - if the fraction of atoms outside the packing exceeds the cut-off,
       #   then use method 1 to calculate height
-      # - if the fraction is greater, then use method 2
+      # - if the fraction is less, then use method 2
       # 
       # Method 1: height = rho_T/rho_b*C + lower
       # Method 2: Adjust cut-off with rho_T*C - rho_b*(-lower) and integrate rho
       #           within the packing
-      density = makeHistogram(polymers, nSlices, lower)
-      density[:,1] /= (box[2,1] - box[2,0])
+      nOutside = (polymers < box[2,0]).sum()
+      totalDensity = (polymers < box[2,1]).sum() / (box[2,1] - polymers.min()) / 100**2
+      bulkDensity = nOutside / (box[2,0] - polymers.min()) / 100**2
+      scaledLowerBound = (polymers.min() - box[2,0])/(box[2,1] - box[2,0])
+      # Is this the best place to define cut-off? Do before defining porosity
+      cutOff = 0.85
+      if nOutside >= cutOff * nPoly:
+        height = totalDensity / bulkDensity * cutOff + scaledLowerBound
+      else:
+        stopIntegrationAt = totalDensity * cutOff + bulkDensity * scaledLowerBound
+        density = makeHistogram(polymers, nSlices, box[2])
+        # Integrate density within packing
       
       with open(outFile, 'a') as otp:
         np.savetxt(otp, 
