@@ -232,27 +232,27 @@ def main():
       box[:,1] = particles.max(0)
 
       # Calculate important system values
+      # remove all scaling; rescale at the end if necessary
+      lowerBound = pmin - box[2,0]
       nOutside = (polymers < box[2,0]).sum()
       totalDensity = (polymers < box[2,1]).sum() / (box[2,1] - pmin) / AREA
-      bulkDensity = nOutside / (box[2,0] - pmin) / AREA
-      scaledLowerBound = (pmin - box[2,0])/(box[2,1] - box[2,0])
+      bulkDensity = nOutside / (-lowerBound) / AREA
       
       cutOff85 = 0.85
       cutOff99 = 0.99
       density85 = None
       density99 = None
-      # this condition is always true. How should it be tweaked?
-      if bulkDensity * scaledLowerBound >= cutOff99 * totalDensity * (1 + scaledLowerBound):
-        height85 = totalDensity / bulkDensity * cutOff85 + scaledLowerBound
-        height99 = totalDensity / bulkDensity * cutOff99 + scaledLowerBound
-      elif bulkDensity * scaledLowerBound >= cutOff85 * totalDensity * (1+scaledLowerBound):
-        height85 = totalDensity / bulkDensity * cutOff85 + scaledLowerBound
-        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * scaledLowerBound
+      if (-bulkDensity) * lowerBound >= cutOff99 * totalDensity * (box[2,1] - lowerBound):
+        height85 = totalDensity / bulkDensity * cutOff85 * (box[2,1] - lowerBound) + lowerBound
+        height99 = totalDensity / bulkDensity * cutOff99 + lowerBound
+      elif bulkDensity * lowerBound >= cutOff85 * totalDensity * (box[2,1]+lowerBound):
+        height85 = totalDensity / bulkDensity * cutOff85 + lowerBound
+        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * lowerBound
         density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
       else:
-        stopIntegrationAt = totalDensity * cutOff85 + bulkDensity * scaledLowerBound
+        stopIntegrationAt = totalDensity * cutOff85 + bulkDensity * lowerBound
         density85, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
-        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * scaledLowerBound
+        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * lowerBound
         density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
 
       density = np.ones((nSlices,3))
