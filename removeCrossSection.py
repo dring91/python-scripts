@@ -255,17 +255,6 @@ def main():
         stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * lowerBound
         density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
 
-      density = np.ones((nSlices,3))
-      if density99 is None:
-        density = [[0, bulkDensity, bulkDensity]]
-      elif density85 is None:
-        density[:,0] = density99[:,0]
-        density[:,1] *= bulkDensity
-        density[:,2] = density99[:,1]
-      else:
-        density[:,:2] = density85
-        density[:,2] = density99[:,1]
-
       # output density and height values
       with open('density_'+outFile, 'a') as otp:
         header = '# time: %d\n#  z  density85  density99' % time
