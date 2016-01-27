@@ -53,30 +53,39 @@ def interpolate(x, low, high):
     print 'x out of range'
     exit(0)
 
-def integrateHeight(data, stopIntegrationAt):
+def integrateHeight(data, cutOff):
+  # rescale and accumulate data values
+  data[0,1] *= -2*data[0,0]
+  data[1:,1] *= data[2,0] - data[1,0]
+  data[:,1] = np.cumsum(data[:,1]) / data[:,1].sum()
+  
   height = data[0,0]
   prev = data[0]
   for row in data[1:]:
-    if row[1] > stopIntegrationAt >= prev[1]:
-      height = interpolate(stopIntegrationAt, prev[::-1], row[::-1])
+    if row[1] > cutOff >= prev[1]:
+      height = interpolate(cutOff, prev[::-1], row[::-1])
       break
     prev = row
   
   return height
  
 def makeHistogram(atoms,nBins,limits):
+  # make a histogram with different sized bins
+  hist = np.zeros((nBins+1,2))
+  bottomSize = limits[0] - atoms.min()
   binSize = (limits[1]-limits[0])/float(nBins)
-  hist = np.zeros((nBins,2))
-  hist[:,0] = (np.arange(nBins)+0.5)*binSize / limits[1]
+  hist[0,0] = limints[0] - 0.5 * bottomSize
+  hist[1:,0] = (np.arange(nBins)+0.5)*binSize + limits[0]
+  hist[0,1] = (atoms < limits[0]).sum()
+
   atoms = atoms[np.logical_and(atoms >= limits[0], atoms < limits[1])]
   bins = ((atoms - limits[0]) / nBins).astype(int)
   # loop through bins and add atoms
-  for bin in range(nBins):
-    hist[bin,1] = (bins == bin).sum()
-    # try:
-    # except IndexError:
-    #   print "Particle outside box"
-  hist[:,1] /= float(AREA*binSize)
+  for bin in range(nBins-1):
+    hist[bin+1,1] = (bins == bin+1).sum()
+  hist[:,1] /= float(AREA)
+  hist[1:,1] /= binSize
+  hist[0,1] /= bottomSize
   
   return hist
   
@@ -193,13 +202,12 @@ def calcPorosity(particles, box, nInsert, nSlices, params):
 
   return porosity
 
-def findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt):
+def findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff):
   porosity = calcPorosity(particles, box, nInsert, nSlices, params)
-  # How does this work with findHeight?
   density = makeHistogram(polymers, nSlices, box[2])
-  density[:,1] /= porosity[:,1]
+  density[1:,1] /= porosity[:,1]
   # Integrate density within packing
-  height = integrateHeight(density, stopIntegrationAt)
+  height = integrateHeight(density, cutOff)
 
   return density, height
 
@@ -231,29 +239,9 @@ def main():
       box[:,0] = particles.min(0)
       box[:,1] = particles.max(0)
 
-      # Calculate important system values
-      # remove all scaling; rescale at the end if necessary
-      lowerBound = pmin - box[2,0]
-      nOutside = (polymers < box[2,0]).sum()
-      totalDensity = (polymers < box[2,1]).sum() / (box[2,1] - pmin) / AREA
-      bulkDensity = nOutside / (-lowerBound) / AREA
-      
       cutOff85 = 0.85
       cutOff99 = 0.99
-      density85 = None
-      density99 = None
-      if (-bulkDensity) * lowerBound >= cutOff99 * totalDensity * (box[2,1] - lowerBound):
-        height85 = totalDensity / bulkDensity * cutOff85 * (box[2,1] - lowerBound) + lowerBound
-        height99 = totalDensity / bulkDensity * cutOff99 + lowerBound
-      elif bulkDensity * lowerBound >= cutOff85 * totalDensity * (box[2,1]+lowerBound):
-        height85 = totalDensity / bulkDensity * cutOff85 + lowerBound
-        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * lowerBound
-        density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
-      else:
-        stopIntegrationAt = totalDensity * cutOff85 + bulkDensity * lowerBound
-        density85, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
-        stopIntegrationAt = totalDensity * cutOff99 + bulkDensity * lowerBound
-        density99, height99 = findHeight(particles, box, nInsert, nSlices, params, polymers, stopIntegrationAt)
+      density85, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff)
 
       # output density and height values
       with open('density_'+outFile, 'a') as otp:
@@ -266,12 +254,3 @@ def main():
 
 if __name__ == '__main__':
   main()
-
-# Count number of atoms outside the packing
-# - if the fraction of atoms outside the packing exceeds the cut-off,
-#   then use method 1 to calculate height
-# - if the fraction is less, then use method 2
-# 
-# Method 1: height = rho_T/rho_b*C + lower
-# Method 2: Adjust cut-off with rho_T*C - rho_b*(-lower) and integrate rho
-#           within the packing
