@@ -55,37 +55,36 @@ def interpolate(x, low, high):
 
 def integrateHeight(data, cutOff):
   # rescale and accumulate data values
-  data[0,1] *= -2*data[0,0]
-  data[1:,1] *= data[2,0] - data[1,0]
+  data[1,1] *= -2*data[0,0]
+  data[2:,1] *= (data[2,0] - data[1,0])
   data[:,1] = np.cumsum(data[:,1]) / data[:,1].sum()
-  
-  height = data[0,0]
-  prev = data[0]
-  for row in data[1:]:
-    if row[1] > cutOff >= prev[1]:
-      height = interpolate(cutOff, prev[::-1], row[::-1])
-      break
-    prev = row
+  above = data[data[:,1] > cutOff]
+  below = data[data[:,1] <= cutOff]
+ 
+  if below[-1,1] == cutOff:
+    height = below[-1,0]
+  else:
+    height = interpolate(cutOff, below[-1,::-1], above[0,::-1])
   
   return height
  
 def makeHistogram(atoms,nBins,limits):
   # make a histogram with different sized bins
-  hist = np.zeros((nBins+1,2))
+  hist = np.zeros((nBins+2,2))
   bottomSize = limits[0] - atoms.min()
   binSize = (limits[1]-limits[0])/float(nBins)
-  hist[0,0] = limints[0] - 0.5 * bottomSize
-  hist[1:,0] = (np.arange(nBins)+0.5)*binSize + limits[0]
-  hist[0,1] = (atoms < limits[0]).sum()
+  hist[0,0] = -bottomSize # limits[0] - 0.5 * bottomSize
+  hist[1:,0] = np.arange(nBins+1)*binSize # + limits[0]
+  hist[1,1] = (atoms < limits[0]).sum()
 
   atoms = atoms[np.logical_and(atoms >= limits[0], atoms < limits[1])]
-  bins = ((atoms - limits[0]) / nBins).astype(int)
+  bins = ((atoms - limits[0]) / binSize).astype(int)
   # loop through bins and add atoms
-  for bin in range(nBins-1):
-    hist[bin+1,1] = (bins == bin+1).sum()
+  for bin in range(nBins-2):
+    hist[bin+2,1] = (bins == bin+2).sum()
   hist[:,1] /= float(AREA)
-  hist[1:,1] /= binSize
-  hist[0,1] /= bottomSize
+  hist[2:,1] /= binSize
+  hist[1,1] /= bottomSize
   
   return hist
   
@@ -146,16 +145,6 @@ def calcTransformations(frame, box):
     rotations[p] = Rz(theta_b).T.dot(rotations[p])
     rotations[p] = Ry(phi_b).T.dot(rotations[p])
     
-    # #### Transform check ####
-    #   # plt.plot( (p-centers[i]).dot(rotations[i])[:,0], 
-    #   #           (p-centers[i]).dot(rotations[i])[:,2] )
-    #   f, axes = plt.subplots()
-    #   plt.plot( rotations[i].dot((p-centers[i]).T).T[:,0], 
-    #             rotations[i].dot((p-centers[i]).T).T[:,2] )
-    #   axes.set(aspect='equal')
-    # plt.show()
-    # #########################
-
   return rotations, centers
 
 def insert(insertions, center, rotation, box, accepted, (a,b,r)):
@@ -203,11 +192,14 @@ def calcPorosity(particles, box, nInsert, nSlices, params):
   return porosity
 
 def findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff):
+  # Calculate the packing porosity
   porosity = calcPorosity(particles, box, nInsert, nSlices, params)
+  # calculate the superficial density of the polymers in the packing
   density = makeHistogram(polymers, nSlices, box[2])
-  density[1:,1] /= porosity[:,1]
-  # Integrate density within packing
-  height = integrateHeight(density, cutOff)
+  # divide by the porosity to recovery the real density
+  density[2:,1] /= porosity[:,1]
+  # Integrate real density to the appropriate cut-off
+  height = integrateHeight(np.copy(density), cutOff)
 
   return density, height
 
@@ -239,16 +231,23 @@ def main():
       box[:,0] = particles.min(0)
       box[:,1] = particles.max(0)
 
-      cutOff85 = 0.85
-      cutOff99 = 0.99
-      density85, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff)
+      cutOff = 0.85
+      density, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff)
+      cutOff = 0.99
+      height99 = integrateHeight(np.copy(density), cutOff)
+
+      # rescale height
+      dmax = density[:,0].max()
+      density[:,0] /= dmax
+      height85 /= dmax
+      height99 /= dmax
 
       # output density and height values
       with open('density_'+outFile, 'a') as otp:
-        header = '# time: %d\n#  z  density85  density99' % time
+        header = '# time: %d\n#  z  density' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
       with open('height_'+outFile, 'a') as otp:
-        np.savetxt(otp, [[time, height85, height99]], fmt='%.5f',comments='')
+        np.savetxt(otp, [[time, height85, height99]], fmt='%d %.5f %.5f',comments='')
       
   print 'Finished analyzing trajectory'
 
