@@ -29,10 +29,10 @@ def write_xyz(filename, atoms):
 
 def write_conf(filename,
                atoms,
-               bonds,
+               bonds=[],
                title='Entangled polymer simulation with chains of N = 250\n',
-               types=[1,1], # [atomtypes,bondtypes]
-               box=[[1,1],[1,1],[1,1]],
+               types=[1,0], # [atomtypes,bondtypes]
+               box=[[-50,50],[-50,50],[0,100]],
                masses=[1]):
   
   ##########################################  

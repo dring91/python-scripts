@@ -162,7 +162,7 @@ def insert(insertions, center, rotation, box, accepted, (a,b,r)):
 
 def calcPorosity(particles, box, nInsert, nSlices, params):
   porosity = np.zeros((nSlices,2))
-  porosity[:,0] = (np.arange(nSlices) + 0.5) / nSlices
+  porosity[:,0] = np.arange(nSlices) / nSlices
   dSlice = (box[2,1] - box[2,0]) / nSlices
   particles = particles.reshape((params[4],params[3],NDIMS))
 
@@ -208,14 +208,14 @@ def main():
   # Command line args processing
   trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   
-  outFile = '%s_%d' % (outFile, nInsert)
+  outFile = '%s_I%d_B%d' % (outFile, nInsert, nSlices)
 
   # params = (a,b,r_cut,nAtomsPerPart,nPart)
   params = (25*0.5, 50*0.5, 0, 4684, 54)
 
-  with open('density_'+outFile, 'w') as otp:
+  with open('density_scaled_'+outFile, 'w') as otp:
     otp.write('# Density profiles\n')
-  with open('height_'+outFile, 'w') as otp:
+  with open('height_scaled_'+outFile, 'w') as otp:
     otp.write('# height profiles at two cut-offs\n')
 
   with open(trajFile,'r') as inp:
@@ -237,17 +237,17 @@ def main():
       height99 = integrateHeight(np.copy(density), cutOff)
 
       # rescale height
-      dmax = density[:,0].max()
+      dmax = density[-1,0]
       density[:,0] /= dmax
       height85 /= dmax
       height99 /= dmax
 
       # output density and height values
-      with open('density_'+outFile, 'a') as otp:
+      with open('density_scaled_'+outFile, 'a') as otp:
         header = '# time: %d\n#  z  density' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
-      with open('height_'+outFile, 'a') as otp:
-        np.savetxt(otp, [[time, height85, height99]], fmt='%d %.5f %.5f',comments='')
+      with open('height_scaled_'+outFile, 'a') as otp:
+        np.savetxt(otp, [[time, height85, height99, density[0,0]]], fmt='%d %.5f %.5f %.5f',comments='')
       
   print 'Finished analyzing trajectory'
 

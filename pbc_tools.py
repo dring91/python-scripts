@@ -17,3 +17,16 @@ def unwrap(coords, box):
     coords[i,:,:2] = PBC(p[:,:2]-p[0,:2],p[:,:2],box[:2,:])
       
   return coords
+
+def makeBox(dims, *args):
+  box = np.zeros((dims,2))
+  if len(args) == 0:
+    print "No atoms available to make box"
+  elif len(args) == 1:
+    box[:,0] = args[0].min(0)
+    box[:,1] = args[0].max(0)
+  elif len(args) >= 2:
+    box[:,0] = args[0].min(0)
+    box[:,1] = args[1].max(0)
+ 
+  return box

@@ -2,102 +2,116 @@
 
 from sys import argv
 import numpy as np
-import matplotlib.pyplot as plt
+from getopt import *
+from pbc_tools import *
 
-def energy(P, Lz):
-  P = np.array(P, dtype=float)
-  P = P[1:].reshape((-1,10,3))
-  ave = P.mean(0)
-  s = P.var(0)
-  s = np.sqrt(s.sum(1))
-  gamma = 0.5*Lz*(ave[:,2]-0.5*(ave[:,0]+ave[:,1]))
+""" Use Young's equation to get at surface energies
+     - Sum interactions that correspond s-v, s-l, and l-v
+     - Calculate the contact angle using Young's equation
+     - Compare to the theta values found independently
+"""
+def getArgs(argv):
+  
+  try:
+    opts, args = getopt(argv[1:],'t:o:n:')
+  except GetoptError:
+    print """randomWalk.py -t <filename> -o <filename> -n <steps> """
+    exit(2)
+  for opt, arg in opts:
+    if opt == '-t':
+      trajFile = arg
+    elif opt == '-o':
+      outFile = arg
+    elif opt == '-n':
+      steps = arg
 
-def readFrame(file):
+  return trajFile, outFile, int(steps)
+ 
+def readFrame(file,nCols=4):
   line = file.readline().strip()
   nAtoms = int(line)
-  atoms = np.zeros((nAtoms,4))
 
   line = file.readline()
   time = int(line.split()[-1])
 
-  for i in range(nAtoms):
-    line = file.readline().split()
-    atoms[i,:] = np.array(line, dtype=float)
+  atoms = np.fromfile(file, float, nAtoms*nCols, ' ')
+  atoms = atoms.reshape((nAtoms,nCols))
 
   return time, atoms
 
-def weighted_std(x,w):
+def interactions(potential, r_cut, box, *args):
+  E = 0
+  dist = lambda v: np.sqrt(v[0]**2+v[1]**2+v[2]**2)
+  if len(args) == 0:
+    print "No atoms"
+  elif len(args) == 1:
+    rows, _ = args[0].shape
+    # this doesn't actually work
+    for i in range(rows-1):
+      for j in range(i+1,rows):
+        j[:2] = PBC(i[:2]-j[:2],j[:2],box[:2,:])
+        r = dist(i-j)
+        if r < r_cut:
+          E += potential(r)
+          print E
+  elif len(args) >= 2:
+    # only use first two arguments from args
+    # pairs = np.tile(args[0],(len(args[1]),1,1))
+    # pairs = np.swapaxes(pairs,0,1)
+    # pairs = pairs - args[1]
+    # rs = np.sqrt(pairs[:,:,0]**2+pairs[:,:,1]**2+pairs[:,:,2]**2)
+    # mask = (rs < r_cut)
+    # E = potential(rs[mask]).sum()
 
-  ave = np.average(x,weights=w)
-  residuals = x-ave
-  SSR = sum(residuals**2)
-  var = SSR/(len(x)-1)
-  std = np.sqrt(var)
+    for i in args[0]:
+      for j in args[1]:
+        j[:2] = PBC(i[:2]-j[:2],j[:2],box[:2,:])
+        r = dist(i-j)
+        if r < r_cut:
+          E += potential(r)
+          print E
 
-  return std
+  return E
 
 def main():
-  
-  thermoFile = argv[1]
-  coordFile = argv[2]
-  nFrames = int(argv[3])
-  nBins = int(argv[4])
 
-  # with open(thermoFile, 'r') as file:
-  #   P = []
-  #   for line in file:
-  #     L = line.split()
-  #     if len(L) > 0 and L[0] == '#':
-  #       heading = L[1:]
-  #       indices = []
-  #       indices.append(heading.index('Pzz'))
-  #       indices.append(heading.index('Pxx'))
-  #       indices.append(heading.index('Pyy'))
-  #     elif len(L) > 0:
-  #       P.append([L[i] for i in indices])
+  inFile, outFile, nFrames = getArgs(argv)
 
-  with open(coordFile, 'r') as file:
-    ave = np.zeros((nBins,2))
-    for frame in range(nFrames):
-      time, atoms = readFrame(file)
-      atoms = atoms[atoms[:,0] == 1][:,1:]
-      hist = np.ones((nBins,2))
-      hist[:,0] = 100*hist[:,0]
-      hist[:,1] = 0*hist[:,1]
+  # define a function that calculates interactions based on LJ potential with cut-offs
+  # Start out with polymers that don't have vapor
+  #  thus:  cos (theta) = - gamma_sl
+  # Make the interactions function compare interactions between two lists
+  #  If the lists are identical, pass just one (use *args to handle this)
 
-      limits = np.zeros(2)
-      limits[0] = atoms[:,1].min()
-      limits[1] = atoms[:,1].max()
+  NDIMS = 3
+  epsilon = 1
+  sigma = 1
+  r_cut = 1.75
+  cutOffEnergy = 4*epsilon*((sigma/r_cut)**12-(sigma/r_cut)**6)
+  U_LJ = lambda r: 4*epsilon*((sigma/r)**12-(sigma/r)**12) - cutOffEnergy
 
-      d = (limits[1]-limits[0])/nBins
-      for atom in atoms:
-        bin = int((atom[1]-limits[0])/d)
-        if bin >= nBins:
-          bin = 0
-        if hist[bin,1] < atom[2]:
-          hist[bin,1] = atom[2]
-        if hist[bin,0] > atom[2]:
-          hist[bin,0] = atom[2]
-      hist[:,0] = hist[:,0]*(hist[:,0] != 100)
+  with open(outFile, 'w') as otp:
+    otp.write('# Youngs law calculation of theta and surface energy\n')
 
-      ave[:,1] += hist[:,1]-hist[:,0]
+  with open(inFile, 'r') as inp:
+    # For each frame
+    for n in range(nFrames):
+      time, atoms = readFrame(inp)
 
-    ave[:,0] = (np.arange(nBins)+0.5)*d + limits[0]
-    ave[:,1] /= nFrames
-    # stdev = ave[:,0].std(weights=ave[:,1])
-    stdev = weighted_std(ave[:,0],ave[:,1])
-    # plt.axis('equal')
-    plt.xlim(-stdev/2**0.25,stdev/2**0.25)
-    plt.plot(ave[:,0],ave[:,1])
-    plt.plot(ave[:,0],18*np.exp(-(ave[:,0]/stdev)**2))
-    # plt.plot(ave[:,0],ave[:,1]-18*np.exp(-(ave[:,0]/stdev)**2))
-    plt.plot(stdev/2**0.25, 18*np.exp(-1/(2**0.5)),'ro')
-    plt.plot(-stdev/2**0.25, 18*np.exp(-1/(2**0.5)),'ro')
-    # plt.plot(ave[ave[:,0] > 0][:,0],
-    plt.show()
+      # filter out surface and polymer
+      polymer = atoms[atoms[:,0] == 1][:,1:]
+      surface = atoms[atoms[:,0] == 2][:,1:]
+      box = makeBox(NDIMS, surface, polymer)
+      
+      # Calculate gamma_sl
+      gamma_sl = interactions(U_LJ, r_cut, box, polymer, surface)
+      
+      # Calculate theta using Young's equation
+      Youngs = lambda x: np.acos(-x)
+      theta = Youngs(gamma_sl)
 
-  # create histogram along y and calculate the max in each bin
-  # average the max values
-
+      with open(outFile, 'a') as otp:
+        np.savetxt(otp, [[time, gamma_sl, theta]], fmt='%d %.5f %.5f\n')
+    
 if __name__ == '__main__':
   main()

@@ -67,12 +67,13 @@ def main():
         time_n, atoms_n = readFrame(file)
         atoms_n = atoms_n[:,1:]
         # handle function calls here
-        MSD[n-m-1,1] = diffusion(atoms_m, atoms_n, chainLength)
+        MSD[n-m-1,1] += diffusion(atoms_m, atoms_n, chainLength)
   # average MSD array
   MSD[:,1] /= MSD[::-1,0]
   # write MSD array to file
   with open(outFile, 'w') as otp:
-    np.savetxt(otp,MSD,'%0.5f',header='n  MSD')
+    otp.write('#  lagtime  MSD\n')
+    np.savetxt(otp,MSD,'%0.5f')
 
 if __name__ == '__main__':
   main()

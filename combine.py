@@ -78,11 +78,11 @@ def readConf(file, atype):
   header = 'header'
   for line in file:
     L = line.split()
-    if len(L) > 0 and L[0] in set(['Atoms','Bonds']):
+    if len(L) > 0 and L[0] in ['Atoms','Bonds']:
       header = L[0]
-    if len(L) > 0 and L[-1] in set(['xhi','yhi','zhi']):
+    if len(L) > 0 and L[-1] in ['xhi','yhi','zhi']:
       box.append(L[:2])
-    elif len(L) > 2 and L[2] in set(atype) and header == 'Atoms':
+    elif len(L) > 2 and L[2] in atype and header == 'Atoms':
       atoms.append(L)
     elif len(L) > 2 and header == 'Bonds':
       bonds.append(L)
@@ -95,7 +95,7 @@ def main():
 
   nParticles = 63
 
-  atomSet = (np.arange(nParticles) + 1).astype(str)
+  atomSet = ['3']
   with open(inFile2, 'r') as inp2:
     box2, topAtoms, bonds = readConf(inp2, atomSet)
 
@@ -127,23 +127,23 @@ def main():
   # write_conf(filename,atoms,bonds,title,types,box,masses):
   atoms, bonds = formatOutput(atoms, bonds, types)
 
-  # check that the bonds and atoms correspond properly
-  test_atoms = np.array(atoms)
-  test_atoms = set(test_atoms[test_atoms[:,2] == '1'][:,0])
-  test_bonds = np.array(bonds)
-  aSet = set(test_bonds[:,2])
-  bSet = set(test_bonds[:,3])
-  bSet = bSet | aSet
-  test = test_atoms - bSet
-  print test
+  # # check that the bonds and atoms correspond properly
+  # test_atoms = np.array(atoms)
+  # test_atoms = set(test_atoms[test_atoms[:,2] == '1'][:,0])
+  # test_bonds = np.array(bonds)
+  # aSet = set(test_bonds[:,2])
+  # bSet = set(test_bonds[:,3])
+  # bSet = bSet | aSet
+  # test = test_atoms - bSet
+  # print test
 
   write_conf(outFile, 
              atoms,
              bonds,
-             'saturated infiltration simulation with spherical packing\n', 
-             [nParticles + 2,1], 
+             'saturated infiltration simulation with cylindrical capillary', 
+             [3,1], 
              box,
-             [1] * (nParticles + 2)
+             [1] * 3
             )
 
 if __name__ == "__main__":
