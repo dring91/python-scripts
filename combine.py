@@ -3,6 +3,7 @@
 from sys import argv, exit
 from getopt import *
 from writeAtoms import *
+from pbc_tools import *
 import numpy as np
 
 def getArgs(argv):
@@ -23,17 +24,18 @@ def getArgs(argv):
   return prefixFile, suffixFile, outFile
 
 def formatOutput(atoms, bonds, types):
-  # No modification
-  polymers = [atom[:2] + [str(int(atom[2]) + 2)] + atom[3:] for atom in atoms[:types[0]]]
+  # No modification (should make the formatting choices clearer)
+  # Needs a way to renumber molecules 
+  top = [atom[:2] + [str(int(atom[2]) + 0)] + atom[3:] for atom in atoms[:types[0]]]
   # Increments atom number and molecule number
-  surface  = [[str(int(atom[0])+int(polymers[-1][0])-int(atoms[types[0]][0])+1),
-               str(int(atom[1])+int(polymers[-1][1])-int(atoms[types[0]][1])+1)
+  bottom  = [[str(int(atom[0])+int(top[-1][0])-int(atoms[types[0]][0])+1),
+               str(int(atom[1])+int(top[-1][1])-int(atoms[types[0]][1])+1)
               ] + atom[2:] for atom in atoms[types[0]:]]
-  bonds = [bond[:2] + [str(int(bond[2])+int(polymers[-1][0])-int(atoms[types[0]][0])+1),
-                       str(int(bond[3])+int(polymers[-1][0])-int(atoms[types[0]][0])+1)]
+  bonds = [bond[:2] + [str(int(bond[2])+int(top[-1][0])-int(atoms[types[0]][0])+1),
+                       str(int(bond[3])+int(top[-1][0])-int(atoms[types[0]][0])+1)]
                        for bond in bonds] 
 
-  return polymers + surface, bonds
+  return top + bottom, bonds
 
 def makeBox(box1,box2):
   box = box1[:2]
@@ -99,33 +101,64 @@ def main():
   with open(inFile2, 'r') as inp2:
     box2, topAtoms, bonds = readConf(inp2, atomSet)
 
+  atomSet = ['1','2']
   with open(inFile1, 'r') as inp1:
-    box1, bottomAtoms, bonds = readConf(inp1,['2','1'])
+    box1, bottomAtoms, bonds = readConf(inp1,atomSet)
 
-  topAtoms = [[int(row[0])] + row[1:] for row in topAtoms] 
-  bottomAtoms = [[int(row[0])] + row[1:] for row in bottomAtoms] 
+  if len(topAtoms) == 0:
+    # sort atoms
+    bottomAtoms = [[int(row[0])] + row[1:] for row in bottomAtoms] 
+    bottomAtoms.sort()
+    bottomAtoms = [[str(row[0])] + row[1:] for row in bottomAtoms] 
 
-  topAtoms.sort()
-  bottomAtoms.sort()
+    # calculate atom bounds
+    bottomBounds = boundAtoms(bottomAtoms)
 
-  topAtoms = [[str(row[0])] + row[1:] for row in topAtoms] 
-  bottomAtoms = [[str(row[0])] + row[1:] for row in bottomAtoms] 
+    # format atoms and calculate box
+    # types = [len(bottomAtoms)]
+    # atoms, bonds = formatOutput(bottomAtoms, bonds, types)
+    atoms = [[str(int(atom[0]) - int(bottomAtoms[0][0]) + 1),
+              str(int(atom[1]) - int(bottomAtoms[0][1]) + 1)
+             ] + atom[2:] for atom in bottomAtoms]
+    bonds = [bond[:2] + [str(int(bond[2]) - int(bottomAtoms[0][0]) + 1),
+                         str(int(bond[3]) - int(bottomAtoms[0][0]) + 1)] for bond in bonds]
+    box = box1[:2] + [[str(bottomBounds[0]),str(bottomBounds[1])]]
 
-  topBounds = boundAtoms(topAtoms)
-  bottomBounds = boundAtoms(bottomAtoms)
-  buffer = -1
+    title = 'saturated simulation polymer layer equilibration'
+    ntypes = 2
 
-  shift = topBounds[0]-bottomBounds[1]+buffer
-  bottomAtoms = translateAtoms(bottomAtoms, [0,0,shift]) 
+  else:
+    # sort atoms
+    topAtoms = [[int(row[0])] + row[1:6] for row in topAtoms] 
+    bottomAtoms = [[int(row[0])] + row[1:6] for row in bottomAtoms] 
 
-  atoms = topAtoms + bottomAtoms
-  types = [len(topAtoms),len(bottomAtoms)]
+    topAtoms.sort()
+    bottomAtoms.sort()
 
-  box = box1[:2] + [[str(bottomBounds[0]+shift),str(topBounds[1])]]
+    topAtoms = [[str(row[0])] + row[1:] for row in topAtoms] 
+    bottomAtoms = [[str(row[0])] + row[1:] for row in bottomAtoms] 
+
+    # find the vertical bounds of the two configurations
+    topBounds = boundAtoms(topAtoms)
+    bottomBounds = boundAtoms(bottomAtoms)
+
+    # shift the bottom atoms to the appropriate location
+    buffer = -1
+    shift = topBounds[0]-bottomBounds[1]+buffer
+    bottomAtoms = translateAtoms(bottomAtoms, [0,0,shift]) 
+
+    # join and format the configurations
+    atoms = topAtoms + bottomAtoms
+    types = [len(topAtoms),len(bottomAtoms)]
+    atoms, bonds = formatOutput(atoms, bonds, types)
+
+    # construct the box dimensions
+    box = box1[:2] + [[str(bottomBounds[0]+shift),str(topBounds[1])]]
+    title = 'saturated infiltration simulation with cylindrical capillary' 
+    ntypes = 3
 
   write_xyz(outFile, [line[2:] for line in atoms])
-  # write_conf(filename,atoms,bonds,title,types,box,masses):
-  atoms, bonds = formatOutput(atoms, bonds, types)
+  write_conf(outFile, atoms, bonds, title, [ntypes,1], box, [1] * ntypes)
 
   # # check that the bonds and atoms correspond properly
   # test_atoms = np.array(atoms)
@@ -136,15 +169,6 @@ def main():
   # bSet = bSet | aSet
   # test = test_atoms - bSet
   # print test
-
-  write_conf(outFile, 
-             atoms,
-             bonds,
-             'saturated infiltration simulation with cylindrical capillary', 
-             [3,1], 
-             box,
-             [1] * 3
-            )
 
 if __name__ == "__main__":
   main()

@@ -244,8 +244,8 @@ def main():
           circ = pyplot.Circle((0,z0), radius=R, fill=False)
           frames.append([t*0.002,angle])
 
-#           plotInterface(atoms,box,interface,circ,(t,angle))
-#       pyplot.show()
+      #     plotInterface(atoms,box,interface,circ,(t,angle))
+      # pyplot.show()
 
     plotAngle(frames)
     pyplot.show()

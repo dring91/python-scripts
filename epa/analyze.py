@@ -44,21 +44,21 @@ def printData(nums):
 def main():
   
   plug_in = loadPlugIn(argv[2])
-  print '# Plug-in loaded'
+  # print '# Plug-in loaded'
   
   with open(argv[1], 'r') as file:
     data = readFile(file)
   data = np.array(data)
-  print '# data loaded'
+  # print '# data loaded'
 
   try:
     args = argv[4:]
   except IndexError:
     args = []
   result = plug_in.command(data,*args)
-  print '# computation complete'
+  # print '# computation complete'
 
-  header = '# test\n'
+  header = ''
   # May want to ask in future if the user wants to overwrite the file
   mode = 'w'
 
@@ -69,7 +69,7 @@ def main():
   else:
     with open(outFile, mode) as file:
       writeData(file, result, header)
-  print '# data written'
+  # print '# data written'
 
 if __name__ == "__main__":
   main()

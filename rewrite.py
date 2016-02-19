@@ -39,6 +39,7 @@ def main():
 
   trajFile, outFile, nFrames = getArgs(argv)
   atomtype = 1
+  particles = 3
   nSkip = nFrames / 100
 
   with open(outFile+'_unwrapped.xyz', 'w') as otp:
@@ -49,7 +50,9 @@ def main():
       # read and filter data
       for s in range(nSkip):
         time, frame = readFrame(inp)
+      zero = frame[frame[:,0] == particles][:,3].min()
       frame = frame[frame[:,0] == atomtype][:,1:]
+      frame[:,2] -= zero
       # build box
       box = np.zeros((2,2))
       box[:,0] = frame[:,:2].min(0)

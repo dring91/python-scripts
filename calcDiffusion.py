@@ -53,6 +53,14 @@ def diffusion(atoms_head, atoms_tail, chainLength):
 def main():
   filename, outFile, nFrames = getArgs(argv)
 
+  # Generate multiple MSDs based on the locations of the polymers
+  # 1. Exclude polymers in the bulk
+  # 2. Exclude polymers NOT in the bulk
+  # 3. Look at polymers in the packing exclusively
+  # 
+  # The point is to find a reasonable time-scale for polymer relaxation
+  # Polymers in the packing have z coordinate > 0 and those near the surface are less than
+  # 5 sigma from the surface (most negative polymer value)
   MSD = np.zeros((nFrames-1,2))
   MSD[:,0] = np.arange(1,nFrames)
   chainLength = 1
@@ -61,11 +69,13 @@ def main():
     with open(filename, 'r') as file:
       file.seek(pos)
       time_m, atoms_m = readFrame(file)
-      atoms_m = atoms_m[:,1:]
+      # add a condition to restrict the polymers based on location (make a mask)
+      mask = np.logical_and(atoms_m[:,2] < 0, atoms_m[:,2] > 5*(atoms_m[:,2].min()))
+      atoms_m = atoms_m[:,1:][mask]
       pos = file.tell()
       for n in range(m+1,nFrames):
         time_n, atoms_n = readFrame(file)
-        atoms_n = atoms_n[:,1:]
+        atoms_n = atoms_n[:,1:][mask]
         # handle function calls here
         MSD[n-m-1,1] += diffusion(atoms_m, atoms_n, chainLength)
   # average MSD array

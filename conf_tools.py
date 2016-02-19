@@ -19,6 +19,18 @@ def readConf(file, atype):
       
   return box, atoms, bonds
 
+def readFrame(file,nCols=4):
+  line = file.readline().strip()
+  nAtoms = int(line)
+
+  line = file.readline()
+  time = int(line.split()[-1])
+
+  atoms = np.fromfile(file, float, nAtoms*nCols, ' ')
+  atoms = atoms.reshape((nAtoms,nCols))
+
+  return time, atoms
+
 def write_xyz(filename, atoms):
   with open(filename+'.xyz','w') as otp:
     otp.write('%d\nAtoms\n' % len(atoms))
