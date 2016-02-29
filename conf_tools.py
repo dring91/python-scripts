@@ -1,4 +1,4 @@
-#!/usr/bin/python
+import numpy as np
 
 def readConf(file, atype):
 
