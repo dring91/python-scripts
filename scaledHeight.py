@@ -3,21 +3,8 @@
 import numpy as np
 from sys import argv, exit
 from getopt import *
+from conf_tools import readFrame
 
-def readFrame(file):
-  line = file.readline().strip()
-  nAtoms = int(line)
-  atoms = np.zeros((nAtoms,4))
-
-  line = file.readline()
-  time = int(line.split()[-1])
-
-  for i in range(nAtoms):
-    line = file.readline().split()
-    atoms[i,:] = np.array(line, dtype=float) 
-
-  return time, atoms
- 
 def interpolate(x, low, high):
   if x == low[0]:
     return low[1]
