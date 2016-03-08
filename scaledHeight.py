@@ -17,32 +17,30 @@ def interpolate(x, low, high):
     print 'x out of range'
     exit(0)
 
-def findHeight(data, cut_off=0.85, squared=True):
+def findHeight(data, cut_off):
   height = data[0,0]
   prev = data[0]
   for row in data[1:]:
     if row[1] > cut_off >= prev[1]:
-      if squared:
-        height = interpolate(cut_off, prev[::-1], row[::-1])**2
-      else:
-        height = interpolate(cut_off, prev[::-1], row[::-1])
+      height = interpolate(cut_off, prev[::-1], row[::-1])
       break
     prev = row
   
   return height
  
-def makeHistogram(atoms,nBins,lower):
-  hist = np.zeros((nBins,2))
-  binSize = (1-lower)/float(nBins)
-  hist[:,0] = (np.arange(nBins)+0.5)*binSize+lower
+def makeHistogram(atoms,nBins,bounds):
+  hist = np.zeros((nBins+1,2))
+  binSize = (bounds[2] - bounds[1])/nBins
+  hist[0,0] = bounds[0]
+  hist[1:,0] = np.arange(nBins)*binSize + bounds[1]
   for atom in atoms:
-    if lower < atom <= 1:
-      bin = int((atom-lower)/binSize)
-      try:
-        hist[bin,1] += 1
-      except IndexError:
-        print "Particle outside box"
-  hist[:,1] /= 100*100*binSize
+    if bounds[1] < atom <= bounds[2]:
+      bin = int((atom - bounds[1])/binSize)
+      hist[bin+1,1] += 1
+    elif bounds[0] < atom <= bounds[1]:
+      hist[0,1] += 1
+  hist[1:,1] /= 100*100*binSize
+  hist[0,1] /= 100*100*(bounds[1] - bounds[0])
   
   return hist
 
@@ -95,29 +93,32 @@ def main():
   writeHeader(heightFile,title+'# time  cut = 0.85  cut = 0.99\n')
 
   mode = 'a'
-  nBins = 200
+  nBins = 100
+  nTotal = 200
+  nSkip = nTotal / nFrames
 
   with open(trajFile, 'r') as file:
     for n in range(nFrames):
-      t, frame = readFrame(file)
+      for s in range(nSkip):
+        t, frame = readFrame(file)
 
       particles = frame[frame[:,0] == 3][:,3]
       polymers = frame[frame[:,0] == 1][:,3]
-      partMin = particles.min()
       # Packing begins at zero
-      bounds = np.array([polymers.min()-partMin, 
-                         particles.max()-partMin])
-      polymers -= partMin
-      polymers /= bounds[1]
+      bounds = np.array([polymers.min(), particles.min(), particles.max()])
 
-      density = makeHistogram(polymers,nBins,bounds[0]/bounds[1])
-      density[:,1] /= bounds[1]
+      # Calculate density
+      density = makeHistogram(polymers,nBins,bounds)
+      density[:,0] = (density[:,0] - bounds[1]) / (bounds[2] - bounds[1])
       writeDensity(densityFile,density,t,mode)
 
+      # Calculate cumulative density distribution
       density[:,1] = np.cumsum(density[:,1])/np.sum(density[:,1])
-      height85 = findHeight(density,0.85,False)
-      height99 = findHeight(density,0.99,False)
-      height = [t,height85,height90,height95,height99,bounds[0]/bounds[1]]
+      # Calculate height profiles
+      height85 = findHeight(density,0.85)
+      height99 = findHeight(density,0.99)
+      # Write height to file
+      height = [t,height85,height99,density[0,0]]
       writeHeight(heightFile,height,mode)
           
   print('Finished analyzing trajectory')
