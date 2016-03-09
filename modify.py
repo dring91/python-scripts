@@ -2,6 +2,7 @@
 
 import sys
 from conf_tools import *
+from pbc_tools import *
 import numpy as np
 
 MODE = 'r'
@@ -15,6 +16,12 @@ def renumber(atoms, chainLength):
 
   return atoms
 
+def minImageConv(atoms, imageFlags, box):
+
+  atoms = atoms + (box[:,1] - box[:,0]) * imageFlags
+
+  return atoms
+
 def main():
   try:
     filename = sys.argv[1]
@@ -22,20 +29,38 @@ def main():
     print "No Filename given"
     sys.exit()
 
-  atype = ['1','2']
-  nMon = 50
+  atype = ['1','2','3']
+  nMon = 10
 
   with open(filename+'.conf', MODE) as inp:
     box, atoms, bonds = readConf(inp, atype)
 
   atoms = np.array(atoms)
-  info = atoms[:,:3].astype(int)
-  info = renumber(info, nMon)
-  atoms[:,:3] = info.astype(str)
+  box = np.array(box)
 
-  write_conf(filename+'_out', atoms, bonds, 
-            'atoms renumbered for bond/swap', [2,1], box, [1,1])
-  write_xyz(filename+'_out', atoms[:,2:])
+  # # Use image flags written by Lammps
+  # coords = atoms[:,3:6].astype(float)
+  # flags = atoms[:,6:].astype(int)
+  # coords = minImageConv(coords, flags, box.astype(float))
+  # atoms[:,3:6] = coords.astype('|S6')
+
+  # # unwrap atom coordinates
+  # coords = atoms[:,3:6].astype(float)
+  # coords = unwrap(coords, box.astype(float))
+  # atoms[:,3:6] = coords.astype('|S6')
+
+  # # renumber atoms
+  # info = atoms[:,:3].astype(int)
+  # info = renumber(info, nMon)
+  # atoms[:,:3] = info.astype(str)
+
+  # sort atoms
+  nums = atoms[:,0].astype(int)
+  atoms = atoms[nums.argsort(kind='mergesort')]
+
+  write_conf(filename+'_sorted', atoms, bonds, 
+            'atoms renumbered for bond/swap', [3,1], box, [1,1,1])
+  write_xyz(filename+'_out', atoms[:,2:6])
 
 if __name__ == '__main__':
   main()

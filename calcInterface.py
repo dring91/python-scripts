@@ -89,10 +89,10 @@ def rho(z, dl, ze, l):
 def fitDensity(op, z, density):
   
   if op(1,2):
-    guess = [0.8,-40,-1]
+    guess = [0.8,-60,-1]
     fstr = 'bo'
   else:
-    guess = [0.8,40,1]
+    guess = [0.8,60,1]
     fstr = 'go'
   mask = op(density[:,0],0)
   if sum(mask) < 3:
