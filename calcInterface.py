@@ -57,7 +57,7 @@ def centerAtoms(atoms):
   com = atoms.mean(0)
   atoms[:,:2] = atoms[:,:2] - com[:2]
 
-  return atoms
+  return atoms, com[1]
 
 def partitionAtoms(atoms, box, nSlices):
 
@@ -218,7 +218,7 @@ def main():
       mask = (atoms[:,0] == 1) # & (atoms[:,3] < 20) & (abs(atoms[:,2]) < 60)
       atoms = atoms[mask][:,1:]
       # Find the center of mass in the xy direction and center droplet
-      atoms = centerAtoms(atoms)
+      atoms, center = centerAtoms(atoms)
 
       # make box
       box = np.array([atoms.min(0)-0.01,atoms.max(0)+0.01]).T
@@ -242,7 +242,7 @@ def main():
         else:
           # pyplot.plot(interface[:,0],interface[:,1],'o')
           circ = pyplot.Circle((0,z0), radius=R, fill=False)
-          frames.append([t*0.002,angle])
+          frames.append([t*0.002,angle,center])
 
       #     plotInterface(atoms,box,interface,circ,(t,angle))
       # pyplot.show()

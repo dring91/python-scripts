@@ -99,8 +99,8 @@ def main():
 
   with open(trajFile, 'r') as file:
     for n in range(nFrames):
-      for s in range(nSkip):
-        t, frame = readFrame(file)
+      # for s in range(nSkip):
+      t, frame = readFrame(file)
 
       particles = frame[frame[:,0] == 3][:,3]
       polymers = frame[frame[:,0] == 1][:,3]

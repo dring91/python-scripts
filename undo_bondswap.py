@@ -2,6 +2,7 @@ import numpy as np
 from sys import argv, exit
 import os
 from getopt import *
+from conf_tools import write_conf, write_xyz
 
 def PBC(x,boundaries):
   
@@ -25,7 +26,7 @@ def GetAtoms(file):
     elif len(L) > 3 and (L[3] == 'xhi' or L[3] == 'yhi' or L[3] == 'zhi'):
       box.append(L[:2])
     elif len(L) > 2 and L[2] == '1' and section == 'Atoms':
-      atoms.update({L[0]:(L[3],L[4],L[5])})
+      atoms.update({L[0]:L[1:6]})
     elif len(L) > 1 and L[1] == '1' and section == 'Bonds':
       bonds.update({L[2]:L[3]})
   
@@ -33,23 +34,18 @@ def GetAtoms(file):
 
 def getArgs(argv):
  
-  # defaults
-  useCOM = True
-
   try:
-    opts, args = getopt(argv[1:],'i:o:l:')
+    opts, args = getopt(argv[1:],'i:l:')
   except GetoptError:
-    print 'randomWalk.py -i <filename> -o <filename> -l <chainLength>'
+    print 'undo_bondswap.py -i <filename> -l <chainLength>'
     exit(2)
   for opt, arg in opts:
     if opt == '-i':
       inFile = arg
-    elif opt == '-o':
-      outFile = arg
     elif opt == '-l':
       chainLength = arg
  
-  return inFile, outFile, int(chainLength)
+  return inFile, int(chainLength)
 
 def getEnds(atoms, bonds):
   # find them by counting up the number of times an atom occurs in bonds
@@ -87,21 +83,22 @@ def unshuffleAtoms(atoms, bonds, ends, nMon):
 
 def main():
   
-  inFile, outFile, nMon = getArgs(argv)
+  inFile, nMon = getArgs(argv)
 
-  nChains = nTotal/nMon
-
-  with open(inFile, 'r') as inp:
+  with open(inFile+'.conf', 'r') as inp:
     atoms, bonds, box = GetAtoms(inp)
 
   # search for all the chain ends in bonds and store in new array
   ends = getEnds(atoms, bonds)
+  print ends
 
-  # unshuffle bonds
-  unshuffled = unshuffleAtoms(atoms, bonds, ends, nMon)
+  # # unshuffle bonds
+  # unshuffled = unshuffleAtoms(atoms, bonds, ends, nMon)
 
-  # write the new atoms list and the bonds to a file
-  write_conf()
+  # # write the new atoms list and the bonds to a file
+  # suffix = '_unshuffled'
+  # write_conf(inFile+suffix, atoms, bonds, 'unshuffled conf', [2,1], box, [1,1])
+  # write_xyz(inFile+suffix, atoms)
 
   print 'Finished Analyzing Trajectory'
       
