@@ -83,7 +83,7 @@ def main():
   with open(inFile2, 'r') as inp2:
     box2, topAtoms, bonds = readConf(inp2, atomSet)
 
-  atomSet = ['1','2']
+  atomSet = '3' #['1','2']
   with open(inFile1, 'r') as inp1:
     box1, bottomAtoms, bonds = readConf(inp1,atomSet)
 
