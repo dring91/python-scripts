@@ -1,11 +1,11 @@
-#!/bin/python
-
 import numpy as np
 from sys import argv, exit
 from getopt import *
+from conf_tools import readTrj
 
 NDIMS = 3
 AREA = 100*100
+RC = 1
 
 def getArgs(argv):
   
@@ -29,18 +29,6 @@ def getArgs(argv):
 
   return trajFile, outFile, int(steps), int(insertions), int(slices)
   
-def readFrame(file,nCols=4):
-  line = file.readline().strip()
-  nAtoms = int(line)
-
-  line = file.readline()
-  time = int(line.split()[-1])
-
-  atoms = np.fromfile(file, float, nAtoms*nCols, ' ')
-  atoms = atoms.reshape((nAtoms,nCols))
-
-  return time, atoms
-
 def interpolate(x, low, high):
   if x == low[0]:
     return low[1]
@@ -201,38 +189,34 @@ def findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff):
   # Integrate real density to the appropriate cut-off
   height = integrateHeight(np.copy(density), cutOff)
 
-  return density, height
+  return density, height, porosity
 
 def main():
   
   # Command line args processing
   trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   
-  outFile = '%s_I%d_B%d' % (outFile, nInsert, nSlices)
+  outFile = '%s_%d' % (outFile, nInsert)
 
   # params = (a,b,r_cut,nAtomsPerPart,nPart)
-  params = (25*0.5, 50*0.5, 0, 4684, 54)
+  params = (25*0.5, 50*0.5, RC, 4684, 54)
 
-  with open('density_scaled_'+outFile, 'w') as otp:
+  with open('density_'+outFile, 'w') as otp:
     otp.write('# Density profiles\n')
-  with open('height_scaled_'+outFile, 'w') as otp:
+  with open('height_'+outFile, 'w') as otp:
     otp.write('# height profiles at two cut-offs\n')
 
   with open(trajFile,'r') as inp:
     for n in range(nFrames):
       # read data and separate by atomtypes
-      time, frame = readFrame(inp)
-      particles = frame[frame[:,0] >= 3][:,1:]
-      polymers = frame[frame[:,0] == 1][:,3]
+      time, box, frame = readTrj(inp)
+      frame = frame[frame[:,0].argsort()]
+      particles = frame[frame[:,1] >= 3][:,2:]
+      polymers = frame[frame[:,1] == 1][:,4]
       pmin = polymers.min()
 
-      # make box
-      box = np.zeros((NDIMS,2))
-      box[:,0] = particles.min(0)
-      box[:,1] = particles.max(0)
-
       cutOff = 0.85
-      density, height85 = findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff)
+      density, height85, porosity = findHeight(particles, box, nInsert, nSlices, params, polymers, cutOff)
       cutOff = 0.99
       height99 = integrateHeight(np.copy(density), cutOff)
 
@@ -241,12 +225,13 @@ def main():
       density[:,0] /= dmax
       height85 /= dmax
       height99 /= dmax
+      # concatenate porosity and density???
 
       # output density and height values
-      with open('density_scaled_'+outFile, 'a') as otp:
-        header = '# time: %d\n#  z  density' % time
+      with open('density_'+outFile, 'a') as otp:
+        header = '# time: %d\n#  z  density  porosity' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
-      with open('height_scaled_'+outFile, 'a') as otp:
+      with open('height_'+outFile, 'a') as otp:
         np.savetxt(otp, [[time, height85, height99, density[0,0]]], fmt='%d %.5f %.5f %.5f',comments='')
       
   print 'Finished analyzing trajectory'

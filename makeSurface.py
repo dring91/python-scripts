@@ -9,10 +9,11 @@ from math import pi
 
 MODE = 'r'
 
-def makeSurface(A, l):
+def makeSurface(A, l, R):
 
-  # need to calculate m and n
+  # need to calculate m and n (number of sites in the x an y directions)
   n, m = int(l*np.sqrt(2/(np.sqrt(3)*A))), int(l*np.sqrt(np.sqrt(3)/A/2))
+  # distances between sites
   dx, dy = l/n, l/m
   row = np.arange(n) * dx
   row_offset = row + 0.5*dx
@@ -24,6 +25,11 @@ def makeSurface(A, l):
     else:
       surface[i*n:(i+1)*n,0] = row_offset
       surface[i*n:(i+1)*n,1] = i*dy
+
+  # shift center to position (0,0)
+  surface[:,:2] -= 2*R #-50.0
+  # remove sites from a the center within a circle of radius R
+  surface = surface[np.sqrt(surface[:,0]**2 + surface[:,1]**2) > R]
 
   return surface
 
@@ -48,24 +54,24 @@ def main():
     R = float(sys.argv[2])
   except IndexError:
     print "Using default R value"
-    R = 25
+    R = 25.0
 
-  atype = ['1','2']
-  nMon, nPerPart = 50, 4684
-  a, b, c, atomRadius = 12.5, 12.5, 25, 1
+  a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
-  sideLength = 100
+  sideLength = 4*R
 
-  surface = makeSurface(areaDensity, sideLength)
-  surface = np.around(surface,6)
-  surface[:,:2] += -50.0
-  surface = surface[np.sqrt(surface[:,0]**2 + surface[:,1]**2) > R]
+  # generate a surface with a hole in the center
+  surface = makeSurface(areaDensity, sideLength, R)
+  # surface = np.around(surface,6)
 
   box = makeBox(3, surface)
 
+  # generate index information for configuration file
   info = makeFile(surface)
+  # combine coordinate and index info
   atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
 
+  # generate input files for lammps and VMD
   write_conf(filename+'_out', atoms, title='Surface with cut-out R = %d' % R, box=box)
   write_xyz(filename+'_out', atoms[:,2:])
 

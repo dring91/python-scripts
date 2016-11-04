@@ -3,21 +3,8 @@
 import numpy as np
 from sys import argv, exit
 from getopt import *
+from conf_tools import readFrame, readTrj
 
-def readFrame(file):
-  line = file.readline().strip()
-  nAtoms = int(line)
-  atoms = np.zeros((nAtoms,4))
-
-  line = file.readline()
-  time = int(line.split()[-1])
-
-  for i in range(nAtoms):
-    line = file.readline().split()
-    atoms[i,:] = np.array(line, dtype=float) 
-
-  return time, atoms
- 
 def interpolate(x, low, high):
   if x == low[0]:
     return low[1]
@@ -30,32 +17,29 @@ def interpolate(x, low, high):
     print 'x out of range'
     exit(0)
 
-def findHeight(data, cut_off=0.85, squared=True):
+def findHeight(data, cut_off):
   height = data[0,0]
   prev = data[0]
   for row in data[1:]:
     if row[1] > cut_off >= prev[1]:
-      if squared:
-        height = interpolate(cut_off, prev[::-1], row[::-1])**2
-      else:
-        height = interpolate(cut_off, prev[::-1], row[::-1])
+      height = interpolate(cut_off, prev[::-1], row[::-1])
       break
     prev = row
   
   return height
  
-def makeHistogram(atoms,nBins):
+def makeHistogram(atoms,nBins,lower):
   hist = np.zeros((nBins,2))
-  binSize = 1/float(nBins)
-  hist[:,0] = (np.arange(nBins)+0.5)*binSize
+  binSize = (1-lower)/float(nBins)
+  hist[:,0] = (np.arange(nBins)+0.5)*binSize+lower
   for atom in atoms:
-    if 0 < atom <= 1:
-      bin = int(atom/binSize)
+    if lower < atom <= 1:
+      bin = int((atom-lower)/binSize)
       try:
         hist[bin,1] += 1
       except IndexError:
         print "Particle outside box"
-  hist[:,1] /= 100*100*binSize
+  hist[:,1] /= 100*100*(1-lower)
   
   return hist
 
@@ -66,7 +50,7 @@ def writeHeader(filename,header):
   
 def writeHeight(filename,height,mode):
   with open(filename, 'a') as file:
-    file.write('%d %f %f\n' % tuple(height))
+    file.write('%d %f %f %f\n' % tuple(height))
 
 def writeDensity(filename,density,time,mode):
   with open(filename, 'a') as file:
@@ -100,32 +84,34 @@ def main():
   densityFile = path+'density_'+outFile
   heightFile = path+'height_'+outFile
   
-  title = '# Infiltration height for an undersaturated simulation\n'
+  title = '# Infiltration height\n'
   writeHeader(densityFile,title)
-  writeHeader(heightFile,title+'# time  cut = 0.85  cut = 0.99\n')
+  writeHeader(heightFile,title+'# time  cut = 0.85  cut = 0.99  polymer\n')
 
   mode = 'a'
   nBins = 200
 
   with open(trajFile, 'r') as file:
     for n in range(nFrames):
-      t, frame = readFrame(file)
+      t, box, frame = readTrj(file)
 
-      particles = frame[frame[:,0] == 3][:,3]
-      polymers = frame[frame[:,0] == 1][:,3]
-      # can the lower boundary of the packing be used for finding height only?
-      bounds = np.array([polymers.min(), particles.max()])
+      particles = frame[frame[:,1] == 3][:,4]
+      polymers = frame[frame[:,1] == 1][:,4]
+
+      bounds = np.array([particles.min(), particles.max()])
       polymers -= bounds[0]
       polymers /= bounds[1]
+      polyLayer = polymers.min()
 
-      density = makeHistogram(polymers,nBins)
+      density = makeHistogram(polymers,nBins,polyLayer)
       density[:,1] /= bounds[1]
-      # writeDensity(densityFile,density,t,mode)
+      writeDensity(densityFile,density,t,mode)
 
-      density[:,1] = np.cumsum(density[:,1])/np.sum(density[:,1]*bounds[1]/nBins)
-      height85 = findHeight(density,0.85,False)
-      height99 = findHeight(density,0.99,False)
-      height = [t,height85,height99]
+      density[:,1] = np.cumsum(density[:,1])/np.sum(density[:,1]*bounds[1])
+
+      height85 = findHeight(density,0.85)
+      height99 = findHeight(density,0.99)
+      height = [t,height85,height99,polyLayer]
       writeHeight(heightFile,height,mode)
           
   print('Finished analyzing trajectory')

@@ -27,7 +27,10 @@ def GetAtoms(file):
     elif len(L) > 3 and (L[3] == 'xhi' or L[3] == 'yhi' or L[3] == 'zhi'):
       box.append(L[:2])
     elif len(L) > 2 and L[2] in ['1','2'] and section == 'Atoms':
-      atoms.update({L[0]:L[1:6]})
+      try:
+        atoms.update({L[0]:L[1:9]})
+      except IndexError:
+        atoms.update({L[0]:L[1:6]})
     elif len(L) > 1 and L[1] == '1' and section == 'Bonds':
       bonds.update({L[2]:L[3]})
   
@@ -99,7 +102,7 @@ def main():
   # write the new atoms list and the bonds to a file
   suffix = '_unshuffled'
   write_conf(inFile+suffix, atoms, bonds, 'unshuffled conf', [2,1], box, [1,1])
-  write_xyz(inFile+suffix, [atom[2:] for atom in atoms])
+  write_xyz(inFile+suffix, [atom[2:6] for atom in atoms])
 
   print 'Finished Analyzing Trajectory'
       

@@ -4,6 +4,7 @@ from sys import argv, exit
 from getopt import *
 from writeAtoms import *
 from pbc_tools import *
+from conf_tools import *
 import numpy as np
 
 def getArgs(argv):
@@ -72,32 +73,13 @@ def boundAtoms(atoms):
 
   return bounds
 
-def readConf(file, atype):
-
-  atoms = []
-  box = []
-  bonds = []
-  header = 'header'
-  for line in file:
-    L = line.split()
-    if len(L) > 0 and L[0] in ['Atoms','Bonds']:
-      header = L[0]
-    if len(L) > 0 and L[-1] in ['xhi','yhi','zhi']:
-      box.append(L[:2])
-    elif len(L) > 2 and L[2] in atype and header == 'Atoms':
-      atoms.append(L)
-    elif len(L) > 2 and header == 'Bonds':
-      bonds.append(L)
-      
-  return box, atoms, bonds
-
 def main():
 
-  inFile1, inFile2, outFile = getArgs(argv)
+  inFile2, inFile1, outFile = getArgs(argv)
 
   nParticles = 63
 
-  atomSet = ['3']
+  atomSet = '3'
   with open(inFile2, 'r') as inp2:
     box2, topAtoms, bonds = readConf(inp2, atomSet)
 
@@ -128,6 +110,11 @@ def main():
     ntypes = 2
 
   else:
+    # unwrap atoms
+    lengths = [float(ax[1])-float(ax[0]) for ax in box1]
+    bottomCoords = [[float(xyz[3+i]) + float(xyz[6+i])*lengths[i] for i in range(3)] for xyz in bottomAtoms]
+    bottomAtoms = [bottomAtoms[i][:3] + [str(xyz) for xyz in bottomCoords[i]] for i in range(len(bottomCoords))]
+
     # sort atoms
     topAtoms = [[int(row[0])] + row[1:6] for row in topAtoms] 
     bottomAtoms = [[int(row[0])] + row[1:6] for row in bottomAtoms] 

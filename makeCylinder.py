@@ -19,13 +19,16 @@ def ring(r,n,period):
 
 def makeCylinder(A, (r,h)):
 
-  # need to calculate m and n
+  # need to calculate m and n (the number of sites in the axial and polar directions)
   m, n = int(h*np.sqrt(2/(np.sqrt(3)*A))), int(np.pi*r*np.sqrt(2*np.sqrt(3)/A))
+  # L is the distance between sites in the polar direction
   L = 2*np.pi*r/n
-  # setup based on some spacing value and grid constants
+  # generate two rings that will form each repeated section of the cylinder
   layer = ring(r,n,0)
   layer_offset = ring(r,n,0.5)
+  # initialize the cylinder
   cylinder = np.zeros((m*n,3))
+  # loop over the number of rings
   for i in range(m):
     if i % 2 == 0:
       cylinder[i*n:(i+1)*n,:2] = layer[:,:2]
@@ -53,9 +56,7 @@ def main():
     print "No Filename given"
     sys.exit()
 
-  atype = ['1','2']
-  nMon, nPerPart = 50, 4684
-  a, b, c, atomRadius = 12.5, 12.5, 25, 1
+  a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
   try:
     cylDims = (float(sys.argv[2]),100)
@@ -63,14 +64,17 @@ def main():
     cylDims = (25,100)
     print "Default R value used"
 
+  # generate a cylinder with length L and radius R
   cylinder = makeCylinder(areaDensity, cylDims)
-  cylinder = np.around(cylinder,6)
 
   box = makeBox(3, cylinder)
 
+  # generate indices, molecule, and atom types
   info = makeFile(cylinder)
+  # combine coordinate and index information
   atoms = np.concatenate((info.astype('|S10'), cylinder.astype('|S10')), axis=1)
 
+  # generate input files for VMD and LAMMPS
   write_conf(filename+'_out', atoms, title='Capillary R = %d' % cylDims[0], box=box)
   write_xyz(filename+'_out', atoms[:,2:])
 

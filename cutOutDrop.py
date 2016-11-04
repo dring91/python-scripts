@@ -3,6 +3,7 @@
 from sys import argv, exit
 from getopt import *
 import numpy as np
+from pbc_tools import *
 
 def write_xyz(filename, atoms, nChains, chainLength):
   with open(filename+'.xyz','w') as otp:
@@ -249,20 +250,21 @@ def readConf(file, atype):
       
   return box, atoms, bonds
 
-def cut(atoms, R, origin, chainLength):
+def cut(atoms, R, origin, chainLength, box):
   n = 0
   molecule = []
   drop = []
+  newBox = [[-0.5*R+comp,0.5*R+comp] for comp in origin]
   # loop over each molecule
   for atom in atoms:
     if n == chainLength:
       # unnecessary because of unwrap
-      # molecule = PBC_box(molecule, box)
-      # calculate it's center of mass
       molecule = np.array(molecule)
+      molecule = unwrap(molecule, box)
+      # calculate its center of mass
       COM = [calcCOM(molecule[:,d]) for d in range(len(molecule[0]))]
       # check whether it's in the region
-      if inRange(COM[0],[-0.5*R,0.5*R]): # inCylinder(COM, R, 0.5*R, origin):
+      if inBox(COM, newBox): # if inRange(COM[0],[-0.5*R,0.5*R]): # inCylinder(COM, R, 0.5*R, origin):
         # add it to drop if it is
         drop.extend(molecule)
       n = 0
@@ -276,15 +278,18 @@ def main():
 
   inFile, outFile, chainLength, R, z = getArgs(argv)
 
-  try:
-    with open(inFile+'.conf', 'r') as inp:
-      box, atoms, bonds = readConf(inp,['1'])
-  except IOError:
-    print 'Cannot read input file'
-    exit(0)
+  # try:
+  #   with open(inFile+'.conf', 'r') as inp:
+  #     box, atoms, bonds = readConf(inp,['1'])
+  # except IOError:
+  #   print 'Cannot read input file'
+  #   exit(0)
+  with open(inFile+'.conf', 'r') as inp:
+    box, atoms, bonds = readConf(inp,['1'])
 
   atoms = [[float(i) for i in atom[3:]] for atom in atoms]
-  drop = cut(atoms, R, [0,0,z], chainLength)
+  box = np.array(box,dtype=float)
+  drop = cut(atoms, R, [0,0,z], chainLength, box)
 
   # make new box
   box = [boundAtoms(drop,d) for d in range(3)]

@@ -19,6 +19,40 @@ def readConf(file, atype):
       
   return box, atoms, bonds
 
+def readTrj(file, nCols=5):
+
+  """ default """
+  time = None
+  nAtoms = 0
+  box = None 
+  atoms = None
+  item = None
+
+  line = file.readline().strip()
+  while (line != ''):
+    L = line.split()
+    if L[0] == 'ITEM:':
+      item = L[1]
+    if item is not None:
+      if item == 'TIMESTEP':
+        line = file.readline().strip()
+        time = int(line)
+      elif item == 'NUMBER':
+        line = file.readline().strip()
+        nAtoms = int(line)
+      elif item == 'BOX':
+        box = np.fromfile(file, float, 6, ' ')
+        box = box.reshape((3,2))
+      elif item == 'ATOMS':
+        atoms = np.fromfile(file, float, nAtoms*nCols, ' ')
+        atoms = atoms.reshape((nAtoms, nCols))
+        break
+      else:
+        continue
+    line = file.readline().strip()
+
+  return time, box, atoms
+
 def readFrame(file,nCols=4):
   line = file.readline().strip()
   nAtoms = int(line)
@@ -31,9 +65,9 @@ def readFrame(file,nCols=4):
 
   return time, atoms
 
-def write_xyz(filename, atoms):
-  with open(filename+'.xyz','w') as otp:
-    otp.write('%d\nAtoms\n' % len(atoms))
+def write_xyz(filename, atoms, time=0, mode='w'):
+  with open(filename+'.xyz',mode) as otp:
+    otp.write('%d\nAtoms. Timestep: %d\n' % (len(atoms),time))
     try:
       [otp.write('%s %s %s %s\n' % tuple(line)) for line in atoms]
     except TypeError:

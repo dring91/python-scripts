@@ -1,13 +1,13 @@
-#!/usr/bin/python
-
 import numpy as np
 from sys import argv, exit
-from scipy.optimize import curve_fit, leastsq
+from scipy.optimize import curve_fit
+from scipy.optimize import leastsq
 from getopt import *
 from matplotlib import pyplot
 from pylab import *
 from operator import lt, ge
-from conf_tools import readTrj, readFrame
+from conf_tools import readFrame
+from pbc_tools import *
 
 def getArgs(argv):
   
@@ -26,18 +26,6 @@ def getArgs(argv):
 
   return trajFile, confFile, int(nSteps)
 
-def combineFrames(file, nCombine):
-  
-  time, atoms = readFrame(file)
-  l = len(atoms)
-  combined = np.zeros((l*nCombine,4))
-  combined[0:l] = atoms
-  for n in range(nCombine-1):
-    _, atoms = readFrame(file)
-    combined[l*(n+1):l*(n+2)] = atoms
-    
-  return time, combined
- 
 def centerAtoms(atoms):
 
   com = atoms.mean(0)
@@ -75,10 +63,10 @@ def rho(z, dl, ze, l):
 def fitDensity(op, z, density):
   
   if op(1,2):
-    guess = [0.8,-40,-1]
+    guess = [0.8,-60,-1]
     fstr = 'bo'
   else:
-    guess = [0.8,40,1]
+    guess = [0.8,60,1]
     fstr = 'go'
   mask = op(density[:,0],0)
   if sum(mask) < 3:
@@ -124,29 +112,14 @@ def findCylinderInterface(atoms, box):
   # rhoz = np.array(rhoz)
   interfacial = np.array(interfacial)
 
-  return interfacial # [interfacial[:,1] == rhoz[:,0][rhoz[:,0] < p[1]]]
+  return interfacial
 
-def contactAngle(interface,box):
-  # fit interfacial atom coordinates to a circle
-  interface[:,1] -= box[2,0]
-  R = lambda y0, z0: np.sqrt((interface[:,0] - y0)**2 + (interface[:,1] - z0)**2)
-  # res = lambda z0: R(z0) - R(z0).mean()
-  res = lambda args: R(*args) - R(*args).mean()
-  popt, pcov = leastsq(res, [interface[:,0].mean(),-interface[:,1].mean()])
-  # print popt
-  # angle = np.arccos(popt[1]/popt[0])*180.0/np.pi
-  angle = np.arccos(-popt[1]/R(*popt).mean())*180.0/np.pi
-
-  return angle, popt[1], R(*popt).mean()
-
-def plotInterface(atoms,box,interface,circle,t_angle):
+def plotInterface(atoms,box,interface):
   fig = pyplot.figure()
   ax = fig.add_subplot(1,1,1)
   # pyplot.plot(atoms[:,1],atoms[:,2],'o')
   # print interface
   pyplot.plot(interface[:,0],interface[:,1],'go')
-  if circle is not None:
-    fig.gca().add_artist(circle)
   pyplot.ylabel(r'Height, z ($\sigma$)')
   pyplot.xlabel(r'Width, y ($\sigma$)')
   pyplot.ylim(box[2,:])
@@ -163,85 +136,72 @@ def plotRhoY(z,density,mask,fstr,params):
   pyplot.ylabel(r'Density, $\rho$(y) ($n/\sigma^{3}$)')
   pyplot.plot(density[mask][:,0],rho(density[mask][:,0],*params)) 
 
-def plotRhoZ():
-  pass
+def plotRhoZ(rhoz):
   # guess = [3,40,1]
   # p, cov = curve_fit(rho,rhoz[:,0],rhoz[:,1],guess)
-  # pyplot.figure()
-  # pyplot.plot(rhoz[:,0],rhoz[:,1],'o')
-  # pyplot.plot(rhoz[:,0],rho(rhoz[:,0],*p))
-  # pyplot.ylim(bottom=0)
-
-def plotAngle(angles):
-  angles = np.array(angles)
-  angles = angles[angles[:,0] > 1000]
   pyplot.figure()
-  pyplot.plot(angles[:,0],angles[:,1],'bo')
-  pyplot.ylabel(r'Contact Angle, $\theta$ (deg)')
-  pyplot.xlabel(r'time, t ($\tau_{LJ}$)')
-  pyplot.title(r'$\epsilon$ = 0.50, $<\theta>$ = %.0f $\pm$ %.0f' % 
-               (angles[:,1].mean(),angles[:,1].std()))
+  pyplot.plot(rhoz[:,0],rhoz[:,1],'o')
+  # pyplot.plot(rhoz[:,0],rho(rhoz[:,0],*p))
+  pyplot.ylim(bottom=0)
 
 def writeData(filename, data):
   with open(filename, 'w') as file:
     file.write('# time angle\n')
-    [file.write('%d %f %f\n' % tuple(line)) for line in data]
+    [file.write('%d %f\n' % tuple(line)) for line in data]
+
+def calcPCF(surf, poly, box, nBins):
+  rc = box[2,1]
+  rho = 0.8
+  binSize = rc / nBins
+  pcf = np.zeros((nBins,2))
+  pcf[:,0] = (np.arange(nBins)+0.5)*binSize
+
+  for s in surf:
+    dr = poly-s
+    dr[:,:2] = PBC(dr[:,:2],dr[:,:2],box[:2,:])
+    r = np.sqrt(dr[:,0]**2+dr[:,1]**2+dr[:,2]**2)
+    mask = (r < rc)
+    bins = (r[mask] / binSize).astype(int)
+    pcf[bins,1] += 1
+  pcf[1:,1] /= len(surf)*rho*4.0*np.pi*(pcf[1:,0]**2 - pcf[:nBins-1,0]**2)*binSize
+
+  return pcf
 
 def main():
   
   trajFile, outFile, nSteps = getArgs(argv)
 
-  nAve = 1
-  circ = None
-  frames = []
+  nBins = 180
+  pcf = np.zeros((nBins,2))
   with open(trajFile,'r') as inp:
     for n in range(nSteps):
-      # How should block averaging of interfaces be done?
-      # t, atoms = combineFrames(inp,nAve)
-      # t, atoms = readFrame(inp)
-      t, box, atoms = readTrj(inp)
+      for k in range(50):
+        t, frame = readFrame(inp)
 
-      # remove vaporized chains by uncommenting last two mask conditions
-      # mask = (atoms[:,0] == 1) # & (atoms[:,3] < 20) & (abs(atoms[:,2]) < 60)
-      # atoms = atoms[mask][:,1:]
-      mask = (atoms[:,1] == 1)
-      atoms = atoms[mask][:,2:]
-      atoms = atoms * (box[:,1] - box[:,0]) + box[:,0]
+      mask = lambda i: (frame[:,0] == i)
+      poly = frame[mask(1)][:,1:]
+      surf = frame[mask(2)][:,1:]
       # Find the center of mass in the xy direction and center droplet
-      atoms, center = centerAtoms(atoms)
+      # poly, center = centerAtoms(poly)
 
-      # # make box
-      # box = np.array([atoms.min(0)-0.01,atoms.max(0)+0.01]).T
+      # make box
+      box = np.ones((3,2))
+      box[:,0] = frame[:,1:].min(0) #-0.01
+      box[:,1] = frame[:,1:].max(0) #+0.01
       # box[1,:] += [-7,7]
-      atoms[:,2] -= box[2,0]
-      box[2,:] -= box[2,0]
-      box[2,1] += 0.05
+
+      # atoms[:,2] -= box[2,0]
+      # box[2,:] -= box[2,0]
 
       # find interfacial atoms
-      interface = findCylinderInterface(atoms, box)
-      # pyplot.show()
-      # Calculate the contact angle
-      if not ((n+1) % nAve):
-        try:
-          angle, z0, R = contactAngle(interface[(interface[:,1] < 30) & 
-                                                (abs(interface[:,0]) < 100)], box)
-        except RuntimeError:
-          print 'No interface'
-          circ = None
-        except IndexError:
-          print 'Empty interface'
-        else:
-          # pyplot.plot(interface[:,0],interface[:,1],'o')
-          circ = pyplot.Circle((0,z0), radius=R, fill=False)
-          frames.append([t*0.002,angle,center])
+      # interface = findCylinderInterface(atoms, box)
 
-    #       plotInterface(atoms,box,interface,circ,(t,angle))
-    #   pyplot.show()
+      # calculate volume per horizontal 'slice'
+      # calculate pair correlation function
+      pcf += calcPCF(surf, poly, box, nBins)
+    plt.plot(pcf[:,0], pcf[:,1])
+    plt.show()
 
-    # plotAngle(frames)
-    # pyplot.show()
-    writeData(outFile,frames)
- 
     print 'Finished analyzing trajectory'
 
 if __name__ == '__main__':

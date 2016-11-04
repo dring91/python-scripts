@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-# write a script that calculates tangent slopes
 from sys import argv
 import numpy as np
 from numpy.linalg import inv
