@@ -5,7 +5,6 @@ import sys
 from conf_tools import *
 from pbc_tools import makeBox
 import numpy as np
-from math import pi
 
 MODE = 'r'
 
@@ -50,6 +49,7 @@ def makeFile(coords):
   return info
 
 def main():
+  # get output filename from commandline
   try:
     filename = sys.argv[1]
   except IndexError:
@@ -58,14 +58,21 @@ def main():
 
   a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
+
+  # get cylinder dimensions from commandline
   try:
     cylDims = (float(sys.argv[2]),100)
   except IndexError:
     cylDims = (25,100)
     print "Default R value used"
 
-  # generate a cylinder with length L and radius R
+  # generate a cylinder with radius R and length L
   cylinder = makeCylinder(areaDensity, cylDims)
+  ###### VERY IMPORTANT ######
+  # the rounding step is very important to getting a proper shape. 
+  # open question: is this inherent to the calculation or is it an error 
+  #                in the implementation?
+  cylinder = np.around(cylinder,6)
 
   box = makeBox(3, cylinder)
 
