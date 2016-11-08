@@ -116,7 +116,7 @@ def main():
   bounds2 = boundAtoms(atoms2)
 
   # shift the bottom atoms to the appropriate location and leave a small gap between confs
-  margin = -1
+  margin = 0 #-1
   shift = bounds1[1]-bounds2[0]+margin
   atoms2 = translateAtoms(atoms2, [0,0,shift]) 
 
