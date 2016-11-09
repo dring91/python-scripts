@@ -26,7 +26,7 @@ def makeSurface(A, l, R):
       surface[i*n:(i+1)*n,1] = i*dy
 
   # shift center to position (0,0)
-  surface[:,:2] -= 2*R #-50.0
+  surface[:,:2] -= 0.5*l #-50.0
   # remove sites from a the center within a circle of radius R
   surface = surface[np.sqrt(surface[:,0]**2 + surface[:,1]**2) > R]
 
