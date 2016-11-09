@@ -4,143 +4,7 @@ from sys import argv, exit
 from getopt import *
 import numpy as np
 from pbc_tools import *
-
-def write_xyz(filename, atoms, nChains, chainLength):
-  with open(filename+'.xyz','w') as otp:
-    otp.writelines([str(len(atoms)),'\n','Atoms\n'])
-    for line in atoms:
-      otp.write('1 ')
-      xyz = [str(x)+' ' for x in line]
-      otp.writelines(xyz)
-      otp.write('\n')
-
-def write_conf(filename,
-               atoms,
-               nChains,
-               title='Entangled polymer simulation with chains of N = 250\n',
-               chainLength=250,
-               types=[1,1], # [atomtypes,bondtypes]
-               box=[[1,1],[1,1],[1,1]],
-               masses=[1]):
-  
-  ##########################################  
-  # Header comment line:
-  # 
-  # ###### atoms
-  # ###### bonds
-  # 
-  # # atom types
-  # # bond types
-  #
-  # # # xlo xhi
-  # # # ylo yhi
-  # # # zlo zhi
-  # 
-  # Masses
-  #
-  # # #
-  # 
-  # Atoms
-  # 
-  # atom_id molecule_id atomtype x y z
-  # 
-  # Bonds
-  #
-  # bond_id bondtype atom1 atom2
-  #
-  ###########################################
-  if types[1] > 0:
-    bonds = (chainLength-1)*nChains
-  else:
-    bonds = 0
-  
-  with open(filename+'.conf','w') as otp:  
-    # write title line
-    otp.write(title)
-    
-    # skip line
-    otp.write('\n')
-    
-    # write number of atoms and number of bonds
-    otp.write(str(len(atoms))+' atoms\n')
-    if types[1] > 0:
-      otp.write(str(bonds)+' bonds\n')
-
-    # skip line
-    otp.write('\n')
-    
-    # write types
-    otp.write(str(types[0])+' atom types\n')
-    if types[1] > 0:
-      otp.write(str(types[1])+' bond types\n')
-    
-    # skip line
-    otp.write('\n')
-    
-    # write box dimensions
-    dim = 'xyz'
-    [otp.write('%f %f %slo %shi\n' % (box[l][0],box[l][1],dim[l],dim[l])) for l in range(len(box))]    
-
-     # skip line
-    otp.write('\n')
-
-    # write masses
-    otp.write('Masses\n')
-    otp.write('\n')
-    [otp.write('%d %d\n' % (i+1,masses[i])) for i in range(len(masses))]
-
-    # skip line    
-    otp.write('\n')
-    
-    # write atoms
-    otp.write('Atoms\n')
-    otp.write('\n')
-    shift = np.median(range(1,chainLength+1))
-    num = lambda x: shift-np.abs((x+chainLength-1)%chainLength+1-shift)
-    sym = False
-    if sym:
-      [otp.write('%d %d %d %f %f %f\n' % (i+1,
-                                          num(i+1),
-                                          types[0]-1,
-                                          atoms[i][0],atoms[i][1],atoms[i][2])
-                                          ) 
-                                          for i in range(nChains*chainLength)]
-      [otp.write('%d %d %d %f %f %f\n' % (i+1+nChains*chainLength,
-                                          chainLength/2+1,
-                                          types[0],
-                                          atoms[i][0],atoms[i][1],atoms[i][2])
-                                          )
-                                          for i in range(len(atoms)-nChains*chainLength)]
-    else:
-      [otp.write('%d %d %d %f %f %f\n' % (i+1,
-                                          np.floor(i/chainLength)+1,
-                                          types[0],
-                                          atoms[i][0],atoms[i][1],atoms[i][2])
-                                          ) 
-                                          for i in range(nChains*chainLength)]
-      """
-      [otp.write('%d %d %d %f %f %f\n' % (i+1+nChains*chainLength,
-                                          nChains+1,
-                                          types[0],
-                                          atoms[i][0],atoms[i][1],atoms[i][2])
-                                          )
-                                          for i in range(len(atoms)-nChains*chainLength)]
-                                          """
-
-    if types[1] > 0:
-      # skip line    
-      otp.write('\n')
-      
-      # write bonds
-      otp.write('Bonds\n')
-      otp.write('\n')
-      [[otp.write('%d %d %d %d\n' % (j*(chainLength-1)+i+1,
-                                     types[1],
-                                     j*(chainLength)+i+1,
-                                     j*(chainLength)+i+2)
-                                     )
-                                     for i in range(chainLength-1)]
-                                     for j in range(nChains)]
+from conf_tools import *
 
 def inRange(point, interval=[0,1], left=True, right=False):
   
@@ -231,25 +95,6 @@ def boundAtoms(coords, dim):
 
   return bounds
 
-def readConf(file, atype):
-
-  atoms = []
-  box = []
-  bonds = []
-  header = 'header'
-  for line in file:
-    L = line.split()
-    if len(L) > 0 and L[0] in set(['Atoms','Bonds']):
-      header = L[0]
-    if len(L) > 0 and L[-1] in set(['xhi','yhi','zhi']):
-      box.append(L[:2])
-    elif len(L) > 2 and L[2] in set(atype) and header == 'Atoms':
-      atoms.append(L)
-    elif len(L) > 2 and header == 'Bonds':
-      bonds.append(L)
-      
-  return box, atoms, bonds
-
 def cut(atoms, R, origin, chainLength, box):
   n = 0
   molecule = []
@@ -294,8 +139,9 @@ def main():
   # make new box
   box = [boundAtoms(drop,d) for d in range(3)]
 
+  # write_xyz(filename, atoms, {time, mode})
   write_xyz(outFile, drop, len(drop)/chainLength, chainLength)
-  # write_conf(filename,atoms,bonds,title,types,box,masses):
+  # write_conf(filename, atoms, {bonds,title,types,box,masses}):
   write_conf(outFile, 
              drop,
              len(drop)/chainLength,
