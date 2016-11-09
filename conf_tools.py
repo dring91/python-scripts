@@ -76,10 +76,10 @@ def write_xyz(filename, atoms, time=0, mode='w'):
 def write_conf(filename,
                atoms,
                bonds=[],
-               title='Entangled polymer simulation with chains of N = 250\n',
-               types=[1,0], # [atomtypes,bondtypes]
                box=[[-50,50],[-50,50],[0,100]],
-               masses=[1]):
+               types={"atoms":1, "bonds":0},
+               masses=[1], 
+               title='\n'):
   
   ##########################################  
   # Header comment line:
@@ -117,16 +117,16 @@ def write_conf(filename,
     
     # write number of atoms and number of bonds
     otp.write(str(len(atoms))+' atoms\n')
-    if types[1] > 0:
+    if types["bonds"] > 0:
       otp.write(str(len(bonds))+' bonds\n')
 
     # skip line
     otp.write('\n')
     
     # write types
-    otp.write(str(types[0])+' atom types\n')
-    if types[1] > 0:
-      otp.write(str(types[1])+' bond types\n')
+    otp.write(str(types["atoms"])+' atom types\n')
+    if types["bonds"] > 0:
+      otp.write(str(types["bonds"])+' bond types\n')
     
     # skip line
     otp.write('\n')
@@ -160,7 +160,7 @@ def write_conf(filename,
     except TypeError:
       [otp.write('%d %d %d %f %f %f\n' % tuple(line)) for line in atoms]
 
-    if types[1] > 0:
+    if types["bonds"] > 0:
       # skip line    
       otp.write('\n')
       
