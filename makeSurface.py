@@ -5,7 +5,6 @@ import sys
 from conf_tools import *
 from pbc_tools import makeBox
 import numpy as np
-from math import pi
 
 MODE = 'r'
 
@@ -27,7 +26,7 @@ def makeSurface(A, l, R):
       surface[i*n:(i+1)*n,1] = i*dy
 
   # shift center to position (0,0)
-  surface[:,:2] -= 2*R #-50.0
+  surface[:,:2] -= 0.5*l #-50.0
   # remove sites from a the center within a circle of radius R
   surface = surface[np.sqrt(surface[:,0]**2 + surface[:,1]**2) > R]
 
@@ -44,12 +43,14 @@ def makeFile(coords):
   return info
 
 def main():
+  # check for input filename from commandline
   try:
     filename = sys.argv[1]
   except IndexError:
     print "No Filename given"
     sys.exit()
 
+  # check for cylinder radius from commandline
   try:
     R = float(sys.argv[2])
   except IndexError:
@@ -62,7 +63,11 @@ def main():
 
   # generate a surface with a hole in the center
   surface = makeSurface(areaDensity, sideLength, R)
-  # surface = np.around(surface,6)
+  ###### VERY IMPORTANT ######
+  # the rounding step is very important to getting a proper shape. 
+  # open question: is this inherent to the calculation or is it an error 
+  #                in the implementation?
+  surface = np.around(surface,6)
 
   box = makeBox(3, surface)
 
