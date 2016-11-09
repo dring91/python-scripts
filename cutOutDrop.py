@@ -139,17 +139,19 @@ def main():
   # make new box
   box = [boundAtoms(drop,d) for d in range(3)]
 
+  # generate a new set of bonds based on the new set of atoms
+  bonds = 
+
   # write_xyz(filename, atoms, {time, mode})
   write_xyz(outFile, drop, len(drop)/chainLength, chainLength)
-  # write_conf(filename, atoms, {bonds,title,types,box,masses}):
+  # write_conf(filename, atoms, {bonds,box,types,masses,title}):
   write_conf(outFile, 
              drop,
-             len(drop)/chainLength,
-             'undersaturated infiltration simulation\n', 
-             chainLength,
-             [1,1], 
+             bonds,
              box,
-             [1]
+             {"atoms":1,"bonds":1}, 
+             [1],
+             'polymer film with dimensions \n' 
             )
 
 if __name__ == "__main__":

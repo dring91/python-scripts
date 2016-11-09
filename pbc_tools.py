@@ -1,8 +1,6 @@
 import numpy as np
 
 def PBC(dx,x,interval):
-  # isn't this redundant?
-  #   x = x * mask + x * np.logical_not(mask)
   mask = (dx < interval[:,0])
   x = x + 2*interval[:,1]*mask
   mask = (dx >= interval[:,1])
