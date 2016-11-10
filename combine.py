@@ -105,7 +105,7 @@ def main():
   bounds2 = boundAtoms(atoms2)
 
   # shift the bottom atoms to the appropriate location and leave a small gap between confs
-  margin = 0 #-1
+  margin = 0 
   shift = bounds1[1]-bounds2[0]+margin
   atoms2 = translateAtoms(atoms2, [0,0,shift]) 
 
@@ -115,7 +115,7 @@ def main():
   atoms, bonds = formatOutput(atoms, bonds, types)
 
   # construct the box dimensions
-  box = box1[:2] + [[str(bounds2[0]+shift),str(bounds1[1])]]
+  box = box1[:2] + [[str(bounds1[0]),str(bounds2[1]+shift)]]
   # title = 'saturated infiltration simulation with cylindrical capillary' 
   title = 'cylindrical capillary + flat base' 
   # ntypes = 3
