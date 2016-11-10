@@ -1,9 +1,9 @@
 from sys import argv, exit
-from writeAtoms import *
-from pbc_tools import *
-from conf_tools import *
 import numpy as np
 import argparse
+
+from pbc_tools import *
+from conf_tools import *
 
 def getArgs(argv):
 
