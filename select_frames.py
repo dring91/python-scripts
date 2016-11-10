@@ -14,6 +14,7 @@ def main():
   args = parser.parse_args()
 
   suffix = '_sparse'
+  nFrames = 200
 
   with open(args.input+'.xyz', MODE) as inp:
     for n in range(nFrames):
