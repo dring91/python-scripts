@@ -1,28 +1,17 @@
-#!/usr/bin/python
-
 from sys import argv, exit
-from getopt import *
 from writeAtoms import *
 from pbc_tools import *
 from conf_tools import *
 import numpy as np
+import argparse
 
 def getArgs(argv):
 
-  try:
-    opts, args = getopt(argv[1:],'p:s:o:')
-  except GetoptError:
-    print 'randomWalk.py -p <prefix file> -s <suffix file> -o <filename>'
-    exit(2)
-  for opt, arg in opts:
-    if opt == '-p':
-      prefixFile = arg
-    if opt == '-s':
-      suffixFile = arg
-    elif opt == '-o':
-      outFile = arg
+  parser = argparse.ArgumentParser(description="get filenames to combine files")
+  parser.add_argument("-i", "--input", nargs=2)
+  parser.add_argument("-o", "--output")
  
-  return prefixFile, suffixFile, outFile
+  return parser.parse_args()
 
 def formatOutput(atoms, bonds, types):
   # Separates top part of trajectory
@@ -80,16 +69,16 @@ def boundAtoms(atoms):
 
 def main():
 
-  inFile1, inFile2, outFile = getArgs(argv)
+  files = getArgs(argv)
 
   nParticles = 63
 
   atomSet = '3'
-  with open(inFile1, 'r') as inp1:
+  with open(files.input[0], 'r') as inp1:
     box1, atoms1, bonds = readConf(inp1,atomSet)
 
   atomSet = '3'
-  with open(inFile2, 'r') as inp2:
+  with open(files.input[1], 'r') as inp2:
     box2, atoms2, bonds = readConf(inp2,atomSet)
 
   # # calculates box side lengths
@@ -132,8 +121,8 @@ def main():
   # ntypes = 3
   ntypes = 1
 
-  write_xyz(outFile, [line[2:] for line in atoms])
-  write_conf(outFile, atoms, bonds, title, [ntypes,0], box, [1] * ntypes)
+  write_xyz(files.output, [line[2:] for line in atoms])
+  write_conf(files.output, atoms, bonds, box, {"atoms":ntypes, "bonds":0}, [1] * ntypes, title)
 
   # # check that the bonds and atoms correspond properly
   # test_atoms = np.array(atoms)
