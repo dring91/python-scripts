@@ -96,7 +96,6 @@ def main():
 
   # set the vertical zero
   atoms[:,5] -= box[2,0]
-  print box[2,0]
 
   # reconstruct box using the new dimensions provided
   if args.x is not None:

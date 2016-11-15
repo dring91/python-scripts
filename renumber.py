@@ -23,6 +23,9 @@ def main():
 
   # sort the atom array
   atoms = atoms[np.argsort(atoms[:,0])]
+
+  # generate new atom ids
+  atoms[:,0] = np.arange(len(atoms))+1
   
   # generate array masks
   partMask = (atoms[:,2] == 3)
@@ -34,13 +37,13 @@ def main():
   surface = atoms[surfMask]
 
   # generate new polymer molecules
-  nBeads = 350000
+  nBeads = len(polymers) # 350000
   nMon = 10
-  nPart = 54
+  nPart = 0 # 54
   nChains = nBeads / nMon
   nBonds = nChains * (nMon - 1)
   polymers[:,1] = np.repeat(np.arange(nChains)+1+nPart,nMon)
-  atoms[surfMask][:,1] = nPart+nChains
+  surface[:,1] = nPart+nChains+1
 
   # generate new bonds
   pairs = atoms[polyMask][:,0].reshape((nChains, nMon))
@@ -50,14 +53,14 @@ def main():
   bonds = bonds.reshape((nBonds, 4))
   bonds[:,0] = np.arange(nBonds)+1
 
-  ## combine the particle arrays into one
+  # reinsert subarrays back into the atom array
   atoms[polyMask] = polymers
   atoms[surfMask] = surface
   
   # write output to xyz and conf files
   title = 'Renumbered N=10 configuration'
-  types = {"atoms":3, "bonds":1}
-  masses = [1,1,1]
+  types = {"atoms":2, "bonds":1}
+  masses = [1,1]
   write_conf(args.output, atoms, bonds, box, types, masses, title)
   write_xyz(args.output, atoms[:,2:])  
   
