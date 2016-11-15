@@ -115,9 +115,9 @@ def main():
              drop,
              bonds,
              box,
-             {"atoms":1,"bonds":1}, 
-             [1],
-             'polymer film\n' 
+             {"atoms":2,"bonds":1}, 
+             [1,1],
+             'polymer film' 
             )
 
 if __name__ == "__main__":
