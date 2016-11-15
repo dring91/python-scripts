@@ -1,6 +1,6 @@
 import numpy as np
 
-def readConf(file, atype):
+def readConf(file, atype=['3','2','1']):
 
   atoms = []
   box = []
@@ -79,7 +79,7 @@ def write_conf(filename,
                box=[[-50,50],[-50,50],[0,100]],
                types={"atoms":1, "bonds":0},
                masses=[1], 
-               title='\n'):
+               title=''):
   
   ##########################################  
   # Header comment line:
