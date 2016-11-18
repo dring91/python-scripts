@@ -1,95 +1,57 @@
-#!/usr/bin/python
-
 from sys import argv, exit
-from getopt import *
-from writeAtoms import *
-from nestedDicts import *
 import numpy as np
+import argparse
 
-def getArgs(argv):
+from conf_tools import readConf, write_conf, write_xyz
+from pbc_tools import unwrap, PBC
 
-  try:
-    opts, args = getopt(argv[1:],'i:o:')
-  except GetoptError:
-    print 'randomWalk.py -i <filename> -o <filename>'
-    exit(2)
-  for opt, arg in opts:
-    if opt == '-i':
-      inFile = arg
-    elif opt == '-o':
-      outFile = arg
- 
-  return inFile, outFile
-  
-def readConf(file, atype):
-
-  atoms = []
-  box = []
-  bonds = []
-  header = 'header'
-  for line in file:
-    L = line.split()
-    if len(L) > 0 and L[0] in set(['Atoms','Bonds']):
-      header = L[0]
-    if len(L) > 0 and L[-1] in set(['xhi','yhi','zhi']):
-      box.append(L[:2])
-    elif len(L) > 2 and L[2] in set(atype) and header == 'Atoms':
-      atoms.append(L)
-    elif len(L) > 2 and header == 'Bonds':
-      bonds.append(L)
-      
-  return box, atoms, bonds
-  
-def PBC(dx,x,interval):
-  if dx <= interval[0]:
-    x = x + 2*interval[1]
-  elif dx > interval[1]:
-    x = x + 2*interval[0]
-
-  return x  
-  
-def unwrap(info, coords, box):
-  unwrapped = []
-  box = [[float(i) for i in dim] for dim in box]
-  # loop over each atomtype
-  for atype,mols in info.iteritems():
-    # loop over each molecule in an atomtype
-    for mol,atoms in mols.iteritems():
-      # for each atom, apply PBC(atom-atom0)
-      for atom in atoms:
-        line = [atom, mol, atype]
-        line += [str(PBC(float(coords[atom][d])-float(coords[atoms[0]][d]),
-                         float(coords[atom][d]),
-                         box[d]
-                        ) 
-                    )
-                 for d in range(2)
-                ] + [coords[atom][2]]
-        unwrapped.append(line)
-      
-  return unwrapped
- 
 def main():
   
-  inFile, outFile = getArgs(argv)
+  # get commandline arguments
+  parser = argparse.ArgumentParser()
+  parser.add_argument("-i","--input")
+  parser.add_argument("-o","--output")
+  args = parser.parse_args()
   
-  nAtoms = 63
-  atomList = np.arange(63) + 1
-  with open(inFile,'r') as file:
-    box, atoms, bonds = readConf(file, atomList.astype(str))
-  
-  # substrate = [line for line in atoms if line[2] == '2']
-  # atoms = [line for line in atoms if line[2] in set(['1','3'])]
-  
-  info,coords = makeNestedDict(atoms)
+  # read input file
+  with open(args.input,'r') as file:
+    box, atoms, bonds = readConf(file)
 
-  atoms = unwrap(info,coords,box) # + substrate
+  # convert lists to NumPy arrays
+  box = np.array(box, dtype=float)
+  atoms = np.array(atoms, dtype=float)
+  bonds = np.array(bonds, dtype=float)
 
-  title = 'unwrapped configuration'
-  types = [1,0] # [3,1]
-  masses = [1] # [1,1,1]  
-  write_conf(outFile,atoms,bonds,title,types,box,masses)
-  write_xyz(outFile,[line[2:] for line in atoms])  
+  # sort the atom array
+  atoms = atoms[np.argsort(atoms[:,0])]
+  
+  # generate array masks
+  polyMask = (atoms[:,2] == 1)
+
+  # extract subarrays based on atomtype
+  polymers = atoms[polyMask]
+
+  # reshape the extracted array by molecule
+  nBeads = 350000
+  nMon = 10
+  nChains = nBeads / nMon
+  polymers = polymers.reshape((nChains, nMon, 6))
+
+  # unwrap the extracted array
+  polymers[:,:,3:] = unwrap(polymers[:,:,3:], box)
+
+  # reshape the modified array so that it can be re-inserted
+  polymers = polymers.reshape((nBeads, 6))
+
+  # insert extracted array back into the original
+  atoms[polyMask] = polymers
+  
+  # write output to xyz and conf files
+  title = 'Renumbered N=10 configuration'
+  types = {"atoms":3, "bonds":1}
+  masses = [1,1,1]
+  write_conf(args.output, atoms, bonds, box, types, masses, title)
+  write_xyz(args.output, atoms[:,2:])  
   
 if __name__ == "__main__":
   main()

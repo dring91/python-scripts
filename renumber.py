@@ -1,70 +1,68 @@
-#!/usr/bin/python
-
 from sys import argv, exit
-from getopt import *
-from writeAtoms import *
-from nestedDicts import *
 import numpy as np
+import argparse
 
-def getArgs(argv):
+from conf_tools import readConf, write_conf, write_xyz
 
-  try:
-    opts, args = getopt(argv[1:],'i:o:')
-  except GetoptError:
-    print 'randomWalk.py -i <filename> -o <filename>'
-    exit(2)
-  for opt, arg in opts:
-    if opt == '-i':
-      inFile = arg
-    elif opt == '-o':
-      outFile = arg
- 
-  return inFile, outFile
-  
-def readConf(file, atype):
-
-  atoms = []
-  box = []
-  bonds = []
-  header = 'header'
-  for line in file:
-    L = line.split()
-    if len(L) > 0 and L[0] in set(['Atoms','Bonds']):
-      header = L[0]
-    if len(L) > 0 and L[-1] in set(['xhi','yhi','zhi']):
-      box.append(L[:2])
-    elif len(L) > 2 and L[2] in set(atype) and header == 'Atoms':
-      atoms.append(L)
-    elif len(L) > 2 and header == 'Bonds':
-      bonds.append(L)
-      
-  return np.array(box,dtype=float), np.array(atoms,dtype=float), np.array(bonds,dtype=float)
-  
 def main():
   
-  inFile, outFile = getArgs(argv)
+  # get commandline arguments
+  parser = argparse.ArgumentParser()
+  parser.add_argument("-i","--input")
+  parser.add_argument("-o","--output")
+  args = parser.parse_args()
   
-  with open(inFile,'r') as file:
-    box, atoms, bonds = readConf(file, ['3','2','1'])
+  # read input file
+  with open(args.input,'r') as file:
+    box, atoms, bonds = readConf(file)
+
+  # convert lists to NumPy arrays
+  box = np.array(box, dtype=float)
+  atoms = np.array(atoms, dtype=float)
+  bonds = np.array(bonds, dtype=float)
+
+  # sort the atom array
+  atoms = atoms[np.argsort(atoms[:,0])]
+
+  # generate new atom ids
+  atoms[:,0] = np.arange(len(atoms))+1
   
-  partMask = (atoms[:,2] == 3) 
+  # generate array masks
+  partMask = (atoms[:,2] == 3)
   polyMask = (atoms[:,2] == 1)
   surfMask = (atoms[:,2] == 2)
-  particles = (partMask*atoms.T).T
-  polymers = (polyMask*atoms.T).T
-  surface = (surfMask*atoms.T).T
 
-  polyMin = polymers[:,0][polyMask].min()
-  polymers[:,1] = (polymers[:,0] - polyMin + particles[:,1].max() + 1)*polyMask
-  surface[:,1] = (polymers[:,1].max() + 1)*surfMask
+  ## extract subarrays based on atomtype
+  polymers = atoms[polyMask]
+  surface = atoms[surfMask]
 
-  atoms = particles + polymers + surface
+  # generate new polymer molecules
+  nBeads = len(polymers) # 350000
+  nMon = 10
+  nPart = 0 # 54
+  nChains = nBeads / nMon
+  nBonds = nChains * (nMon - 1)
+  polymers[:,1] = np.repeat(np.arange(nChains)+1+nPart,nMon)
+  surface[:,1] = nPart+nChains+1
+
+  # generate new bonds
+  pairs = atoms[polyMask][:,0].reshape((nChains, nMon))
+  bonds = np.ones((nChains, nMon - 1, 4))
+  bonds[:,:,2] = pairs[:,:-1]
+  bonds[:,:,3] = pairs[:,1:]
+  bonds = bonds.reshape((nBonds, 4))
+  bonds[:,0] = np.arange(nBonds)+1
+
+  # reinsert subarrays back into the atom array
+  atoms[polyMask] = polymers
+  atoms[surfMask] = surface
   
-  title = 'unwrapped undersaturated configuration'
-  types = [3,0]
-  masses = [1,1,1]  
-  write_conf(outFile,atoms,bonds,title,types,box,masses)
-  write_xyz(outFile,atoms[:,2:])  
+  # write output to xyz and conf files
+  title = 'Renumbered N=10 configuration'
+  types = {"atoms":2, "bonds":1}
+  masses = [1,1]
+  write_conf(args.output, atoms, bonds, box, types, masses, title)
+  write_xyz(args.output, atoms[:,2:])  
   
 if __name__ == "__main__":
   main()

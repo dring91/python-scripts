@@ -1,6 +1,6 @@
 import numpy as np
 
-def readConf(file, atype):
+def readConf(file, atype=['3','2','1']):
 
   atoms = []
   box = []
@@ -65,6 +65,17 @@ def readFrame(file,nCols=4):
 
   return time, atoms
 
+def write_traj(filename, atoms, box, time=0, mode='a'):
+  with open(filename+'.lammpstrj',mode) as file:
+    file.write("ITEM: TIMESTEP\n")
+    file.write(str(time)+'\n')
+    file.write("ITEM: NUMBER OF ATOMS\n")
+    file.write(str(len(atoms))+'\n')
+    file.write("ITEM: BOX BOUNDS pp pp ss\n")
+    np.savetxt(file, box, fmt="%.6f")
+    file.write("ITEM: ATOMS id type xs ys zs\n")
+    np.savetxt(file, atoms, fmt="%d %d %f %f %f")
+
 def write_xyz(filename, atoms, time=0, mode='w'):
   with open(filename+'.xyz',mode) as otp:
     otp.write('%d\nAtoms. Timestep: %d\n' % (len(atoms),time))
@@ -79,7 +90,7 @@ def write_conf(filename,
                box=[[-50,50],[-50,50],[0,100]],
                types={"atoms":1, "bonds":0},
                masses=[1], 
-               title='\n'):
+               title=''):
   
   ##########################################  
   # Header comment line:
