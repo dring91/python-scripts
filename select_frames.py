@@ -60,15 +60,18 @@ def main():
 
   suffix = '_sparse'
 
-  with open(args.input, MODE) as inp:
+  with open(args.output+suffix, 'w') as file:
+    file.write('')
+
+  with open(args.input, MODE) as file:
     for n in range(args.frames):
-      # time, frame = readFrame(inp)
-      # time, height = read_height(inp)
-      time, density = read_density(inp)
+      # time, frame = readFrame(file)
+      time, height = read_height(file)
+      # time, density = read_density(file)
       if time % args.step == 0:
         # write_xyz(args.output+suffix, frame, time, 'a')
-        # write_height(args.output+suffix, height, 'a')
-        write_density(args.output+suffix, density, time, 'a')
+        write_height(args.output+suffix, height, 'a')
+        # write_density(args.output+suffix, density, time, 'a')
 
 if __name__ == '__main__':
   main()
