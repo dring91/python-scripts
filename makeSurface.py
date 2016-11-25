@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from __future__ import division
 import sys
 from conf_tools import *
@@ -14,6 +12,9 @@ def makeSurface(A, l, R):
   n, m = int(l*np.sqrt(2/(np.sqrt(3)*A))), int(l*np.sqrt(np.sqrt(3)/A/2))
   # distances between sites
   dx, dy = l/n, l/m
+  # if there are an odd number of rows, add an extra row (m+1)
+  if (m % 2):
+    m += 1
   row = np.arange(n) * dx
   row_offset = row + 0.5*dx
   surface = np.zeros((m*n,3))

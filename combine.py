@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from sys import argv, exit
 from getopt import *
 from writeAtoms import *
