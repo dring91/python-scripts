@@ -1,6 +1,6 @@
 import numpy as np
 
-def readConf(file, atype=['3','2','1']):
+def readConf(file, atype=['3','2','1'], cast=True):
 
   atoms = []
   box = []
@@ -16,6 +16,11 @@ def readConf(file, atype=['3','2','1']):
       atoms.append(L)
     elif len(L) > 2 and header == 'Bonds':
       bonds.append(L)
+
+  if cast:
+    box = np.array(box,dtype=float)
+    atoms = np.array(atoms,dtype=float)
+    bonds = np.array(bonds,dtype=float)
       
   return box, atoms, bonds
 
@@ -66,6 +71,7 @@ def readFrame(file,nCols=4):
   return time, atoms
 
 def write_traj(filename, atoms, box, time=0, mode='a'):
+  atoms[:,2:] = (atoms[:,2:] - box[:,0]) / (box[:,1] - box[:,0])
   with open(filename+'.lammpstrj',mode) as file:
     file.write("ITEM: TIMESTEP\n")
     file.write(str(time)+'\n')
