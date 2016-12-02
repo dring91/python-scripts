@@ -5,6 +5,7 @@ import argparse
 
 from conf_tools import readTrj
 from pbc_tools import *
+from insert_tools import *
 
 def getArgs(argv):
 
@@ -16,143 +17,85 @@ def getArgs(argv):
   parser.add_argument("-b", "--bins", type=int)
   
   return parser.parse_args()
+
+def calc_porosity(particles, polymers, box, ns, params):
+  # initialize porosity
+  porosity = np.zeros((ns['nBins'],2))
+  porosity[:,0] = (np.arange(ns['nBins']) + 0.5) / ns['nBins']
+
+  # calculate bin size
+  particles = particles.reshape((ns['nPart'],ns['nAtoms'],ns['nDim']))
+  dSlice = (box[2,1] - box[2,0]) / ns['nBins']
+
+  # unwrap particle coordinates
+  particles = unwrap(particles, box)
+
+  # find the transforms to translate and rotate particles
+  rotations, centers = calcTransformations(particles, box)
   
-def calcTransformations(frame, box):
-  # define rotation matrices
-  Ry = lambda a: np.array([[ np.cos(a),          0, np.sin(a)],
-                           [         0,          1,         0],
-                           [-np.sin(a),          0, np.cos(a)]])
-  Rz = lambda a: np.array([[ np.cos(a), -np.sin(a),         0],
-                           [ np.sin(a),  np.cos(a),         0],
-                           [         0,          0,         1]])
-  rotations = np.zeros((len(frame),3,3))
-  centers = np.zeros((len(frame),3))
-  for p,particle in enumerate(frame):
-    # calculate and remove the center of mass
-    centers[p] = particle.mean(0)
-    particle = particle - centers[p]
-    
-    # determine the axes to rotate onto
-    radii = np.sqrt(np.einsum('...i,...i',particle,particle))
-    b = radii.max()
-    xyz_b = particle[radii.argmax()]
-
-    rotations[p] = np.eye(3)  
-    
-    if xyz_b[2] < 0:
-      R180 = Ry(np.pi)
-      xyz_b = R180.dot(xyz_b)
-      rotations[p] = rotations[p].dot(R180)
-    
-    if xyz_b[1] < 0:
-      R180 = Rz(np.pi)
-      xyz_b = R180.dot(xyz_b)
-      rotations[p] = rotations[p].dot(R180)
-      
-    if xyz_b[0] < 0:
-      R90 = Rz(np.pi/2)
-      xyz_b = R90.T.dot(xyz_b)
-      rotations[p] = R90.T.dot(rotations[p])      
-
-    # define angles
-    phi_b   = np.arccos(xyz_b[2]/b)
-    theta_b = np.arccos(xyz_b[0]/(b*np.sin(phi_b)))
-    rotations[p] = Rz(theta_b).T.dot(rotations[p])
-    rotations[p] = Ry(phi_b).T.dot(rotations[p])
-    
-    # #### Transform check ####
-    # f, axes = plt.subplots()
-    # plt.plot( particle.dot(rotations[p].T)[:,0], 
-    #           particle.dot(rotations[p].T)[:,2] )
-    # axes.set(aspect='equal')
-    # plt.show()
-    # #########################
-
-  return rotations, centers
+  # Select insertion points
+  points = np.random.rand(ns['nInsert'],3)
+  points = points*(box[:,1] - box[:,0]) + box[:,0]
   
-def insert(insertions, center, rotation, box, accepted, (a,b,r)):
-  # DO NOT CHANGE TO insertions -= center
-  insertions = insertions - center
-  # apply minimum image convention to points before rotation
-  insertions[:,:2] = PBC(insertions[:,:2], insertions[:,:2], box[:2,:])
-  insertions = insertions.dot(rotation.T)
+  # test for overlap with nanoparticles
+  test = np.zeros_like(points[:,0],dtype=bool)
+  for c,r in zip(centers, rotations):
+    test = insert(points, c, r, box, test, params)
 
-  # #### point rotation check ####
-  # f, axes = plt.subplots()
-  # plt.plot( insertions[:,0], insertions[:,2], '.')
-  # # plt.plot( (particle-center).dot(rotation.T)[:,0],
-  # #           (particle-center).dot(rotation.T)[:,2], '.')
-  # axes.set(aspect='equal')
-  # plt.show()
-  # ##############################
-  
-  # test if the points satisfy the equation. If they do, they overlap a particle
-  accepted = np.logical_or((insertions[:,0]**2 + insertions[:,1]**2)/(a+r)**2 
-                                               + insertions[:,2]**2/(b+r)**2 < 1, accepted)
+  # test for overlap with polymers
+  # nInsert points and nPoly polymer beads
+  for p in polymers:
+    # difference between insertion points and polymer beads
+    dr = p - points
+    # dot product of differences
+    dr2 = np.einsum('...i,...i',dr,dr)
+    # test that points are within cut-off radius
+    test = test*(np.sqrt(dr2) <= params['r'])
 
-  return accepted
+  # partition points by vertical height
+  bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
+  porosity[:,1] = np.zeros(ns['nBins'])
+
+  # calculate the ratio of accepted to total insertions
+  for i in range(ns['nBins']):
+    insertions = np.logical_not(test[bins == i])
+    porosity[i,1] = insertions.sum() / float(len(insertions))
+
+  return porosity
 
 def main():
   
   # Command line args processing
-  #trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   args = getArgs(argv)
   
-  porosity = np.zeros((args.bins,2))
-  porosity[:,0] = (np.arange(args.bins) + 0.5) / args.bins
-  outFile = '%s_N5_%d_%d' % (args.output, args.particles, args.bins)
+  outFile = '%s_%d_%d' % (args.output, args.particles, args.bins)
 
-  # params = (a,b,r_cut)
-  params = (25*0.5, 50*0.5, 0)
-  nAtoms = 4684
-  nPart = 54
-  nDim = 3
+  params = {'a':25*0.5, 'b':50*0.5, 'r':1}
+  ns = {'nPart':54, 'nAtoms':4684, 'nDim':3, 'nBins':args.bins, 'nInsert':args.particles}
 
-  with open(args.output, 'w') as otp:
+  with open(outFile, 'w') as otp:
     otp.write('# Porosity for N = 5 oversaturated infiltration\n')
 
   with open(args.input,'r') as inp:
     for n in range(args.frames):
       # read and filter data from xyz file
       #time, frame = readFrame(inp)
-      #frame = frame[frame[:,0] >= 3]
+      #frame = frame[frame[:,0] >= 3][:,1:]
 
       # read and filter data from traj file
       time, box, frame = readTrj(inp)
-      frame = frame[frame[:,1] == 3]
+      frame[:,2:] = frame[:,2:]*(box[:,1] - box[:,0]) + box[:,0]
+      frame = frame[np.argsort(frame[:,0])]
+      particles = frame[frame[:,1] == 3][:,2:]
+      polymers = frame[frame[:,1] == 1][:,2:]
 
       # make box
       box = np.zeros((3,2))
-      box[:,0] = frame[:,2:].min(0)
-      box[:,1] = frame[:,2:].max(0)
-      dSlice = (box[2,1] - box[2,0]) / args.bins
+      box[:,0] = particles.min(0)
+      box[:,1] = particles.max(0)
 
-      frame = frame[:,1:].reshape((nPart,nAtoms,nDim))
-
-      # unwrap particle coordinates
-      frame = unwrap(frame, box)
-
-      # find the transforms to translate and rotate particles
-      rotations, centers = calcTransformations(frame, box)
+      porosity = calc_porosity(particles, polymers, box, ns, params)
       
-      # Select insertion points
-      points = np.random.rand(args.particles,3)
-      points = points*(box[:,1] - box[:,0]) + box[:,0]
-      
-      # test for overlap
-      test = np.zeros_like(points[:,0],dtype=bool)
-      for c,r in zip(centers, rotations):
-        test = insert(points, c, r, box, test, params)
-
-      # partition points by vertical height
-      bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
-      porosity[:,1] = np.zeros(nSlices)
-
-      # calculate the ratio of accepted to total insertions
-      for i in range(nSlices):
-        insertions = np.logical_not(test[bins == i])
-        porosity[i,1] = insertions.sum() / float(len(insertions))
-       
       with open(outFile, 'a') as otp:
         np.savetxt(otp, 
                    porosity,
