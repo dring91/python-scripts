@@ -1,22 +1,7 @@
 import numpy as np
 from sys import argv, exit
 from future_builtins import zip
-import argparse
 
-from conf_tools import readTrj
-from pbc_tools import *
-
-def getArgs(argv):
-
-  parser = argparse.ArgumentParser()
-  parser.add_argument("-i", "--input")
-  parser.add_argument("-o", "--output")
-  parser.add_argument("-f", "--frames", type=int)
-  parser.add_argument("-p", "--particles", type=int)
-  parser.add_argument("-b", "--bins", type=int)
-  
-  return parser.parse_args()
-  
 def calcTransformations(frame, box):
   # define rotation matrices
   Ry = lambda a: np.array([[ np.cos(a),          0, np.sin(a)],
@@ -92,21 +77,50 @@ def insert(insertions, center, rotation, box, accepted, (a,b,r)):
 
   return accepted
 
+def calc_porosity(frame, box, ns, params):
+  # initialize porosity
+  porosity = np.zeros((ns['nBins'],2))
+  porosity[:,0] = (np.arange(ns['nBins']) + 0.5) / ns['nBins']
+
+  # calculate bin size
+  frame = frame[:,1:].reshape((ns['nPart'],ns['nAtoms'],ns['nDim']))
+  dSlice = (box[2,1] - box[2,0]) / ns['nBins']
+
+  # unwrap particle coordinates
+  frame = unwrap(frame, box)
+
+  # find the transforms to translate and rotate particles
+  rotations, centers = calcTransformations(frame, box)
+  
+  # Select insertion points
+  points = np.random.rand(ns['nInsert'],3)
+  points = points*(box[:,1] - box[:,0]) + box[:,0]
+  
+  # test for overlap
+  test = np.zeros_like(points[:,0],dtype=bool)
+  for c,r in zip(centers, rotations):
+    test = insert(points, c, r, box, test, params)
+
+  # partition points by vertical height
+  bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
+  porosity[:,1] = np.zeros(ns['nBins'])
+
+  # calculate the ratio of accepted to total insertions
+  for i in range(ns[3]):
+    insertions = np.logical_not(test[bins == i])
+    porosity[i,1] = insertions.sum() / float(len(insertions))
+
+  return porosity
+
 def main():
   
   # Command line args processing
-  #trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   args = getArgs(argv)
   
-  porosity = np.zeros((args.bins,2))
-  porosity[:,0] = (np.arange(args.bins) + 0.5) / args.bins
   outFile = '%s_N5_%d_%d' % (args.output, args.particles, args.bins)
 
-  # params = (a,b,r_cut)
-  params = (25*0.5, 50*0.5, 0)
-  nAtoms = 4684
-  nPart = 54
-  nDim = 3
+  params = {'a':25*0.5, 'b':50*0.5, 'cut-off':0}
+  ns = {'nPart':54, 'nAtoms':4684, 'nDim':3, 'nBins':args.bins, 'nInsert':args.insertions}
 
   with open(args.output, 'w') as otp:
     otp.write('# Porosity for N = 5 oversaturated infiltration\n')
@@ -125,34 +139,9 @@ def main():
       box = np.zeros((3,2))
       box[:,0] = frame[:,2:].min(0)
       box[:,1] = frame[:,2:].max(0)
-      dSlice = (box[2,1] - box[2,0]) / args.bins
 
-      frame = frame[:,1:].reshape((nPart,nAtoms,nDim))
-
-      # unwrap particle coordinates
-      frame = unwrap(frame, box)
-
-      # find the transforms to translate and rotate particles
-      rotations, centers = calcTransformations(frame, box)
+      porosity = calc_porosity(frame, box, ns, params)
       
-      # Select insertion points
-      points = np.random.rand(args.particles,3)
-      points = points*(box[:,1] - box[:,0]) + box[:,0]
-      
-      # test for overlap
-      test = np.zeros_like(points[:,0],dtype=bool)
-      for c,r in zip(centers, rotations):
-        test = insert(points, c, r, box, test, params)
-
-      # partition points by vertical height
-      bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
-      porosity[:,1] = np.zeros(nSlices)
-
-      # calculate the ratio of accepted to total insertions
-      for i in range(nSlices):
-        insertions = np.logical_not(test[bins == i])
-        porosity[i,1] = insertions.sum() / float(len(insertions))
-       
       with open(outFile, 'a') as otp:
         np.savetxt(otp, 
                    porosity,
