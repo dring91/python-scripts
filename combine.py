@@ -36,7 +36,10 @@ def main():
   atoms2 = atoms2[atoms2[:,0].argsort()]
 
   # unwrap atoms if the information is present
-  atoms1[:,3:6] = atoms1[:,3:6] + atoms1[:,6:]*(box1[:,1] - box1[:,0])
+  try:
+    atoms1[:,3:6] = atoms1[:,3:6] + atoms1[:,6:]*(box1[:,1] - box1[:,0])
+  except ValueError:
+    pass
 
   # find the vertical bounds of the two configurations
   bounds1 = boundAtoms(atoms1[:,3:])
@@ -51,6 +54,8 @@ def main():
   atoms = np.zeros((atoms1.shape[0]+atoms2.shape[0],6))
   atoms[:atoms1.shape[0]] = atoms1[:,:6]
   atoms[atoms1.shape[0]:] = atoms2[:,:6]
+  atoms[:,0] = np.arange(len(atoms))+1
+
   bonds = bonds1
   # bonds = np.zeros((bonds1.shape[0]+bonds2.shape[0],4))
   # bonds[:bonds1.shape[0]] = bonds1
@@ -61,11 +66,11 @@ def main():
   box[:2] = box1[:2]
   box[2] = [bounds1[0],bounds2[1]+shift]
   title = 'cylindrical capillary + flat base' 
-  ntypes = 3
+  ntypes = 4
 
   write_xyz(args.output, [line[2:] for line in atoms])
   write_conf(args.output, atoms, bonds, box, {"atoms":ntypes, "bonds":1}, [1] * ntypes, title)
-  # write_traj(args.output, np.delete(atoms,1,1), box)
+  write_traj(args.output, np.delete(atoms,1,1), box, mode='w')
 
 if __name__ == "__main__":
   main()

@@ -17,7 +17,7 @@ def unwrap(coords, box):
       
   return coords
 
-def makeBox(dims, *args):
+def makeBox(dims, padding, *args):
   box = np.zeros((dims,2))
   if len(args) == 0:
     print "No atoms available to make box"
@@ -27,5 +27,8 @@ def makeBox(dims, *args):
   elif len(args) >= 2:
     box[:,0] = args[0].min(0)
     box[:,1] = args[1].max(0)
+
+  box[:,0] = box[:,0] - padding * 0.5
+  box[:,1] = box[:,1] + padding * 0.5
  
   return box

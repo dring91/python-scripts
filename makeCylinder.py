@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from __future__ import division
 import sys
 from conf_tools import *
@@ -74,7 +72,7 @@ def main():
   #                in the implementation?
   cylinder = np.around(cylinder,6)
 
-  box = makeBox(3, cylinder)
+  box = makeBox(3, np.array([0,0,0]), cylinder)
 
   # generate indices, molecule, and atom types
   info = makeFile(cylinder)

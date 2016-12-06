@@ -3,6 +3,7 @@ import sys
 from conf_tools import *
 from pbc_tools import makeBox
 import numpy as np
+import argparse
 
 MODE = 'r'
 
@@ -33,53 +34,49 @@ def makeSurface(A, l, R):
 
   return surface
 
-def makeFile(coords):
+def makeFile(coords,atomtype):
 
   nRows = coords.shape[0]
   info = np.zeros((nRows,3), dtype=int)
   info[:,0] = np.arange(nRows)+1
   info[:,1] = 1
-  info[:,2] = 3
+  info[:,2] = atomtype
 
   return info
 
 def main():
-  # check for input filename from commandline
-  try:
-    filename = sys.argv[1]
-  except IndexError:
-    print "No Filename given"
-    sys.exit()
-
-  # check for cylinder radius from commandline
-  try:
-    R = float(sys.argv[2])
-  except IndexError:
-    print "Using default R value"
-    R = 25.0
+  
+  parser = argparse.ArgumentParser()
+  parser.add_argument('-o','--output',default="cylinder")
+  parser.add_argument('-r','--radius',default=25.0,type=float)
+  parser.add_argument('-t','--atomtype',default=3,type=int)
+  args = parser.parse_args()
 
   a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
-  sideLength = 4*R
+  sideLength = 40.0 # 4*args.radius
 
   # generate a surface with a hole in the center
-  surface = makeSurface(areaDensity, sideLength, R)
+  surface = makeSurface(areaDensity, sideLength, args.radius)
   ###### VERY IMPORTANT ######
   # the rounding step is very important to getting a proper shape. 
   # open question: is this inherent to the calculation or is it an error 
   #                in the implementation?
   surface = np.around(surface,6)
 
-  box = makeBox(3, surface)
+  box = makeBox(3, np.array([0.4,0.93,0]), surface)
+  # box = np.zeros((3,2))
+  # box[:2] = np.array([-20,20])
 
   # generate index information for configuration file
-  info = makeFile(surface)
+  info = makeFile(surface,args.atomtype)
   # combine coordinate and index info
   atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
 
   # generate input files for lammps and VMD
-  write_conf(filename+'_out', atoms, title='Surface with cut-out R = %d' % R, box=box)
-  write_xyz(filename+'_out', atoms[:,2:])
+  write_conf(args.output+'_out', atoms, title='Surface with cut-out R = %d' % args.radius, box=box)
+  write_xyz(args.output+'_out', atoms[:,2:])
+  write_traj(args.output+'_out', np.delete(atoms,1,axis=1).astype(float), box, mode='w')
 
 if __name__ == '__main__':
   main()

@@ -72,6 +72,7 @@ def readFrame(file,nCols=4):
 
 def write_traj(filename, atoms, box, time=0, mode='a'):
   atoms[:,2:] = (atoms[:,2:] - box[:,0]) / (box[:,1] - box[:,0])
+  atoms = np.nan_to_num(atoms)
   with open(filename+'.lammpstrj',mode) as file:
     file.write("ITEM: TIMESTEP\n")
     file.write(str(time)+'\n')
