@@ -41,22 +41,22 @@ def makeHistogram(atoms,R,binSize,limits):
   # make a histogram with different sized bins
   nBins = int((limits[1]-limits[0])/binSize)
   binSize = (limits[1]-limits[0])/nBins
-  hist = np.zeros((nBins,3))
-  hist[:,0] = np.arange(nBins)*binSize + limits[0]
+  hist = np.zeros((nBins,4))
+  hist[:,0] = (np.arange(nBins)+0.5)*binSize + limits[0]
 
   # calculate bin numbers for all atoms
   interior = np.logical_and(atoms[:,2] >= limits[0], atoms[:,2] < limits[1])
-  # interior = np.logical_and(interior, np.sqrt(atoms[:,0]**2 + atoms[:,1]**2) < R)
+  interior = np.logical_and(interior, np.sqrt(atoms[:,0]**2 + atoms[:,1]**2) < R)
   atoms = atoms[interior]
-  bins = ((atoms - limits[0]) / binSize).astype(int)
+  bins = ((atoms[:,2] - limits[0]) / binSize).astype(int)
   # loop through bins and add atoms
   hist[:,1] = [(bins == bin).sum() for bin in range(nBins)]
 
   # normalize by volume
-  hist[:,1] /= binSize*float(np.pi*R**2)
+  hist[:,2] = hist[:,1] / (binSize*float(np.pi*R**2))
   
   # calculate cumulative density profile
-  hist[:,2] = np.cumsum(hist[:,1]) / hist[:,1].sum()
+  hist[:,3] = np.cumsum(hist[:,2]) / hist[:,2].sum()
   
   return hist
   
@@ -86,8 +86,8 @@ def main():
       # cylinder = frame[frame[:,0] == 3][:,1:]
 
       # vertical zero at the bottom of the cylinder
-      polymers[:,2] -= cylinder[:,2].min()
-      cylinder[:,2] -= cylinder[:,2].min()
+      #polymers[:,2] -= cylinder[:,2].min()
+      #cylinder[:,2] -= cylinder[:,2].min()
 
       # make box
       box = np.zeros((NDIMS,2))
@@ -96,6 +96,7 @@ def main():
 
       # calculate the density of the polymers in the packing
       density = makeHistogram(polymers, args.r, args.binSize, box[2])
+      density[:,0] -= cylinder[:,2].min()
 
       height = integrateHeight(density, 0.35, col=1)
 
@@ -109,7 +110,7 @@ def main():
 
       # output density and height values
       with open('density_'+args.output, 'a') as otp:
-        header = '# time: %d\n#  z  density  cum_density' % time
+        header = '# time: %d\n#  z  counts  density  cum_density' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
       with open('height_'+args.output, 'a') as otp:
         np.savetxt(otp, [[time, height, height85, height99, density[1,0]]], fmt='%d %.5f %.5f %.5f %.5f',comments='')
