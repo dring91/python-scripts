@@ -12,7 +12,7 @@ def getArgs(argv):
   parser.add_argument('-t', '--trajFile')
   parser.add_argument('-o', '--output')
   parser.add_argument('-n', '--nFrames', type=int)
-  parser.add_argument('-b', '--binSize', type=int)
+  parser.add_argument('-b', '--binSize', type=float)
   parser.add_argument('-r', type=float)
 
   return parser.parse_args()
@@ -64,10 +64,11 @@ def main():
   
   # Command line args processing
   args = getArgs(argv)
+  outFile = '%s_b%.1f' % (args.output, args.binSize)
   
-  with open('density_'+args.output, 'w') as otp:
+  with open('density_'+outFile, 'w') as otp:
     otp.write('# Density profiles\n')
-  with open('height_'+args.output, 'w') as otp:
+  with open('height_'+outFile, 'w') as otp:
     otp.write('# height profiles at two cut-offs\n')
 
   with open(args.trajFile,'r') as inp:
@@ -109,10 +110,10 @@ def main():
       height99 = integrateHeight(density, cutOff)
 
       # output density and height values
-      with open('density_'+args.output, 'a') as otp:
+      with open('density_'+outFile, 'a') as otp:
         header = '# time: %d\n#  z  counts  density  cum_density' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
-      with open('height_'+args.output, 'a') as otp:
+      with open('height_'+outFile, 'a') as otp:
         np.savetxt(otp, [[time, height, height85, height99, density[1,0]]], fmt='%d %.5f %.5f %.5f %.5f',comments='')
       
   print 'Finished analyzing trajectory'
