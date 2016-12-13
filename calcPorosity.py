@@ -19,13 +19,13 @@ def getArgs(argv):
   return parser.parse_args()
 
 def calc_porosity(particles, polymers, box, ns, params):
-  # initialize porosity
-  porosity = np.zeros((ns['nBins'],2))
-  porosity[:,0] = (np.arange(ns['nBins']) + 0.5) / ns['nBins']
-
   # calculate bin size
   particles = particles.reshape((ns['nPart'],ns['nAtoms'],ns['nDim']))
   dSlice = (box[2,1] - box[2,0]) / ns['nBins']
+
+  # initialize porosity
+  porosity = np.zeros((ns['nBins'],2))
+  porosity[:,0] = (np.arange(ns['nBins']) + 0.5) * dSlice + box[2,0]
 
   # unwrap particle coordinates
   particles = unwrap(particles, box)
@@ -50,7 +50,7 @@ def calc_porosity(particles, polymers, box, ns, params):
     # dot product of differences
     dr2 = np.einsum('...i,...i',dr,dr)
     # test that points are within cut-off radius
-    test = test*(np.sqrt(dr2) <= params['r'])
+    test = np.logical_and(test,(np.sqrt(dr2) <= params['r']))
 
   # partition points by vertical height
   bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
@@ -59,7 +59,7 @@ def calc_porosity(particles, polymers, box, ns, params):
   # calculate the ratio of accepted to total insertions
   for i in range(ns['nBins']):
     insertions = np.logical_not(test[bins == i])
-    porosity[i,1] = insertions.sum() / float(len(insertions))
+    porosity[i,1] = insertions.sum() / float(len(test))
 
   return porosity
 
@@ -91,8 +91,8 @@ def main():
 
       # make box
       box = np.zeros((3,2))
-      box[:,0] = particles.min(0)
-      box[:,1] = particles.max(0)
+      box[:,0] = particles.min(0)-1
+      box[:,1] = particles.max(0)+1
 
       porosity = calc_porosity(particles, polymers, box, ns, params)
       
