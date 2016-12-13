@@ -42,20 +42,24 @@ def main():
   surface[:,1] = nChains+1
   particles[:,1] = len(surface)+nChains+1
 
-  ## generate new bonds
+  ## number molecules
+  particles[:,1] += surface[-1,1]
+
+  ### generate new bonds
   #pairs = atoms[polyMask][:,0].reshape((nChains, nMon))
   #bonds = np.ones((nChains, nMon - 1, 4))
   #bonds[:,:,2] = pairs[:,:-1]
   #bonds[:,:,3] = pairs[:,1:]
   #bonds = bonds.reshape((nBonds, 4))
   bonds = bonds[np.argsort(bonds[:,2])]
+  nBonds = len(bonds)
   bonds[:,0] = np.arange(nBonds)+1
 
   ## reinsert subarrays back into the atom array
   atoms[partMask] = particles
-  #atoms[polyMask] = polymers
+  atoms[polyMask] = polymers
   atoms[surfMask] = surface
-  
+
   # write output to xyz and conf files
   #title = 'Renumbered N=10 configuration'
   title = 'Renumbered cylinder and N=10 polymer configuration'
