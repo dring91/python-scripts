@@ -24,7 +24,7 @@ def calc_porosity(particles, polymers, box, ns, params):
   dSlice = (box[2,1] - box[2,0]) / ns['nBins']
 
   # initialize porosity
-  porosity = np.zeros((ns['nBins'],2))
+  porosity = np.zeros((ns['nBins'],3))
   porosity[:,0] = (np.arange(ns['nBins']) + 0.5) * dSlice + box[2,0]
 
   # unwrap particle coordinates
@@ -42,24 +42,22 @@ def calc_porosity(particles, polymers, box, ns, params):
   for c,r in zip(centers, rotations):
     test = insert(points, c, r, box, test, params)
 
-  # test for overlap with polymers
-  # nInsert points and nPoly polymer beads
-  for p in polymers:
-    # difference between insertion points and polymer beads
-    dr = p - points
-    # dot product of differences
-    dr2 = np.einsum('...i,...i',dr,dr)
-    # test that points are within cut-off radius
-    test = np.logical_and(test,(np.sqrt(dr2) <= params['r']))
+  # calculate the superficial polymer density
+  volume = dSlice * (box[0,1] - box[0,0]) * (box[1,1] - box[1,0])
+  bead = np.pi/6
+  bins = ((polymers[:,2] - box[2,0]) / dSlice).astype(int)
+  superficial = np.array([(bins == bin).sum()*bead/volume for bin in range(ns['nBins'])])
 
   # partition points by vertical height
   bins = ((points[:,2] - box[2,0]) / dSlice).astype(int)
-  porosity[:,1] = np.zeros(ns['nBins'])
+  #porosity[:,1] = np.zeros(ns['nBins'])
 
   # calculate the ratio of accepted to total insertions
-  for i in range(ns['nBins']):
-    insertions = np.logical_not(test[bins == i])
-    porosity[i,1] = insertions.sum() / float(len(test))
+  for bin in range(ns['nBins']):
+    insertions = np.logical_not(test[bins == bin])
+    porosity[bin,1] = insertions.sum() / float(len(insertions))
+
+  porosity[:,2] = porosity[:,1] - superficial
 
   return porosity
 
@@ -91,8 +89,8 @@ def main():
 
       # make box
       box = np.zeros((3,2))
-      box[:,0] = particles.min(0)-1
-      box[:,1] = particles.max(0)+1
+      box[:,0] = particles.min(0)-0.5
+      box[:,1] = particles.max(0)+0.5
 
       porosity = calc_porosity(particles, polymers, box, ns, params)
       
