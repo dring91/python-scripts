@@ -2,6 +2,7 @@ import numpy as np
 from sys import argv, exit
 import argparse
 from conf_tools import readFrame, readTrj
+from scipy.optimize import curve_fit
 
 NDIMS = 3
 AREA = 100*100
@@ -53,13 +54,19 @@ def makeHistogram(atoms,R,binSize,limits):
   hist[:,1] = [(bins == bin).sum() for bin in range(nBins)]
 
   # normalize by volume
-  hist[:,2] = hist[:,1] / (binSize*float(np.pi*R**2))
+  hist[:,2] = hist[:,1] / (binSize*float(np.pi*(R-0.5)**2))
   
   # calculate cumulative density profile
   hist[:,3] = np.cumsum(hist[:,2]) / hist[:,2].sum()
   
   return hist
   
+def sigmoidal(z, rhol, rhov, z0, d):
+
+  # params = [rhol, rhov, z0, d]
+
+  return 0.5 * (rhol + rhov) - 0.5 * (rhol - rhov) * np.tanh(2*(z - z0)/d)
+
 def main():
   
   # Command line args processing
@@ -70,6 +77,8 @@ def main():
     otp.write('# Density profiles\n')
   with open('height_'+outFile, 'w') as otp:
     otp.write('# height profiles at two cut-offs\n')
+  with open('cut-offs_'+outFile, 'w') as otp:
+    otp.write('# heights calculated for multiple cut-offs\n')
 
   with open(args.trajFile,'r') as inp:
     for n in range(args.nFrames):
@@ -99,22 +108,34 @@ def main():
       density = makeHistogram(polymers, args.r, args.binSize, box[2])
       density[:,0] -= cylinder[:,2].min()
 
-      height = integrateHeight(density, 0.35, col=1)
+      # Calculate fluid height via sigmoidal fitting
+      guess = [0.8, 0.1, 50, 3]
+      params, errors = curve_fit(sigmoidal, density[:,0], density[:,2], guess)
+      #height = params[2]
 
       # Integrate real density to the appropriate cut-off
       cutOff = 0.85
-      height85 = integrateHeight(density, cutOff)
+      height85 = integrateHeight(density, cutOff, 3)
 
       # Integrate real density to the appropriate cut-off
       cutOff = 0.99
-      height99 = integrateHeight(density, cutOff)
+      height99 = integrateHeight(density, cutOff, 3)
+
+      # compute different cut-off values
+      cutOffs = np.arange(0.85,0.99,0.01)
+      heights = [integrateHeight(density, cutOff, 3) for cutOff in cutOffs]
 
       # output density and height values
       with open('density_'+outFile, 'a') as otp:
         header = '# time: %d\n#  z  counts  density  cum_density' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
       with open('height_'+outFile, 'a') as otp:
-        np.savetxt(otp, [[time, height, height85, height99, density[1,0]]], fmt='%d %.5f %.5f %.5f %.5f',comments='')
+        np.savetxt(otp, [[time] + params.tolist() + [height85, height99, density[1,0]]], 
+                        fmt='%d %.5f %.5f %.5f %.5f %.5f %.5f %.5f',
+                        header='time rhol rhov height interface height85 height99 polymers',comments='')
+      with open('cut-offs_'+outFile, 'a') as otp:
+        np.savetxt(otp, [[time] + heights + params.tolist()], fmt='%.5f',
+                        header='time rhol rhov height interface height85 height99 polymers',comments='')
       
   print 'Finished analyzing trajectory'
 

@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import ndimage
+from scipy.optimize import curve_fit
 from sys import argv, exit
 import argparse
 from conf_tools import readFrame, readTrj
@@ -43,6 +44,16 @@ def makeHistogram(atoms,R,binSize,limits):
   hist[1:,1:] = hist[1:,1:] / (np.pi*binSize[0]*binSize[1]**2*(2*np.arange(nBins[1])+1))
   
   return hist
+
+def sigmoidal(z, rhol, rhov, z0, d):
+
+  # params = [rhol, rhov, z0, d]
+
+  return 0.5 * (rhol + rhov) - 0.5 * (rhol - rhov) * np.tanh(2*(z - z0)/d)
+
+def jac(z, rhol, rhov, z0, d):
+
+  return 0.5 * (rhol - rhov0) * np.sech(2*(z - z0)/d)**2 * (2*z/d)
   
 def main():
   
@@ -72,16 +83,27 @@ def main():
 
       # calculate the density of the polymers in the packing
       density = makeHistogram(polymers, args.r, args.binSize, box[2])
-      sx = ndimage.sobel(density[1:,1:], axis=1, mode='reflect')
-      sy = ndimage.sobel(density[1:,1:], axis=0, mode='reflect')
-      meniscus = np.hypot(sx, sy)
-      edge = np.argwhere(meniscus > 1.5)
+
+      # calculate interface from sigmoidal function
+      guess = [0.8, 0.1, 50, 2]
+      interface = []
+      for data in density.T:
+        params, errors = curve_fit(sigmoidal, density[1:,0], data[1:], guess)
+        interface.append(params)
+      interface = np.array(interface) 
+
+      # calculate meniscus from Sobel filter
+      #sx = ndimage.sobel(density[1:,1:], axis=1, mode='reflect')
+      #sy = ndimage.sobel(density[1:,1:], axis=0, mode='reflect')
+      #meniscus = np.hypot(sx, sy)
+      #edge = np.argwhere(meniscus > 1.5)
 
       # output density and height values
       with open('density_'+args.output, 'a') as otp:
         header = '# time: %d\n#  z  counts  density' % time
         #np.savetxt(otp, density[1:,1:], fmt='%.5f', header=header, footer='\n', comments='')
         #np.savetxt(otp, meniscus, fmt='%.5f', header=header, footer='\n', comments='')
+        np.savetxt(otp, interface, fmt='%.5f', header=header, footer='\n', comments='')
      
   print 'Finished analyzing trajectory'
 
