@@ -3,6 +3,23 @@ import numpy as np
 import argparse
 from conf_tools import *
 from pbc_tools import *
+import matplotlib.pyplot as plt
+
+def rotations(v, angle, axis, inv=False):
+
+  axes = np.arange(3)
+  [i,j] = axes[axes != axis]
+  if inv: i,j = j,i
+
+  # what is the best way to perform broadcasting?
+  R = np.zeros((3,3))
+  R[axis,axis] = 1
+  R[i,i] = np.cos(angle) 
+  R[j,j] = np.cos(angle) 
+  R[i,j] = np.sin(angle) 
+  R[j,i] = -np.sin(angle) 
+
+  return v.dot(R.T)
 
 def main():
 
@@ -23,7 +40,6 @@ def main():
   # make box
   box = np.zeros((3,2))
   h = (volume / args.ar**2)**(1/3.0)
-  print h
   box[2,1] = h
   box[:2,1] = h * args.ar
   box = (box.T - 0.5 * (box[:,1] + box[:,0])).T
@@ -42,34 +58,89 @@ def main():
   # check for problems such as stretching and compute density, equilibrium R, etc.
 
   # Start with just one chain
+  start_pts = np.random.rand(args.nChains, 3)
+  start_pts = (start_pts - 0.5) * (box[:,1] - box[:,0])
+  #### Check starting points ####
+  #plt.plot(start_pts[:,0], start_pts[:,1], 'o')
+  #plt.plot(start_pts[:,1], start_pts[:,2], 'o')
+  #plt.plot(start_pts[:,0], start_pts[:,2], 'o')
+  #plt.show()
+  ##########################
 
   # randomly generate the bond angles of the polymer
   nAngles = args.nMon - 1
   angles = np.random.rand(args.nChains, nAngles, 2)
-  angles[:,:,0] = angles[:,:,0] * (180 - 63.4) + 63.4
-  angles[:,:,1] = angles[:,:,1] * 360
+  bond_min = np.arccos((2*bond_length**2-1.02**2)/2*bond_length**2)
+  angles[:,:,0] = angles[:,:,0] * (np.pi - bond_min) + bond_min
+  angles[:,:,1] = angles[:,:,1] * 2 * np.pi
+
+  #### Check that the angles make sense
+  #ax = plt.subplot(111, projection='polar')
+  #theta = angles[:,:,0].reshape((args.nChains*nAngles))
+  #phi = angles[:,:,1].reshape((args.nChains*nAngles))
+  ##ax.plot(phi, bond_length*np.ones_like(phi), 'o', color='b')
+  #ax.plot(theta, bond_length*np.ones_like(theta), 'o', color='r')
+  #ax.set_rmax(2.0)
+  #ax.grid(True)
+  #plt.show()
+  #######
+
+  # rotate vectors onto each other to obtain their cartesian coordinates
+  coords = np.zeros((args.nChains, args.nMon, 3))
+  coords[:,1,0] = bond_length*np.sin(angles[:,0,0])*np.cos(angles[:,0,1])
+  coords[:,1,1] = bond_length*np.sin(angles[:,0,0])*np.sin(angles[:,0,1])
+  coords[:,1,2] = bond_length*np.cos(angles[:,0,0])
+  for i in range(args.nChains):
+    for j in range(2,args.nMon):
+      coords[i,j] = rotations(
+                    rotations(coords[i,j-1],angles[i,j-1,1],1,inv=True),
+                                            np.pi-angles[i,j-1,0],2,inv=True)
 
   # transform bond angles into polar angles
-  angles[:,1:,0] = [[180 - angles[c,a,0] - angles[c,a-1,0] for a in range(1,nAngles)] for c in range(args.nChains)]
-  angles[:,:,1] = np.cumsum(angles[:,:,1],axis=1)
-  angles *= np.pi / 180
+  #angles[:,1:,0] = [[np.pi - angles[c,a,0] - angles[c,a-1,0] for a in range(1,nAngles)] for c in range(args.nChains)]
+  #angles = np.around(angles, 6)
+  #angles[:,:,0] += angles[:,0,0]
+  #angles[:,:,1] = np.cumsum(angles[:,:,1],axis=1)
   
+  ##### Check that the angles make sense
+  #ax = plt.subplot(111, projection='polar')
+  #theta = angles[:,:,0].reshape((args.nChains*nAngles))
+  #phi = angles[:,:,1].reshape((args.nChains*nAngles))
+  #ax.plot(phi, bond_length*np.ones_like(phi), 'o', color='b')
+  #ax.plot(theta, bond_length*np.ones_like(theta), 'o', color='r')
+  #ax.set_rmax(2.0)
+  #ax.grid(True)
+  #plt.show()
+  ########
+
   # generate xyz coordinates
-  coords = np.zeros((args.nChains,args.nMon,3))
-  coords[:,1:,0] = np.sin(angles[:,:,0])*np.cos(angles[:,:,1])
-  coords[:,1:,1] = np.sin(angles[:,:,0])*np.sin(angles[:,:,1])
-  coords[:,1:,2] = np.cos(angles[:,:,0])
-  coords *= bond_length
-  coords = np.cumsum(coords, axis=0)
+  #coords = np.zeros((args.nChains,args.nMon,3))
+  #coords[:,1:,0] = np.sin(angles[:,:,0])*np.cos(angles[:,:,1])
+  #coords[:,1:,1] = np.sin(angles[:,:,0])*np.sin(angles[:,:,1])
+  #coords[:,1:,2] = np.cos(angles[:,:,0])
+  #coords = np.around(coords, 6)
+  coords = np.cumsum(coords, axis=1)
+  #coords *= bond_length
+
+  # add starting points
+  coords = np.swapaxes(coords,0,1)
+  coords = coords + start_pts
+  coords = np.swapaxes(coords,0,1)
 
   # check for overlaps
-  #overlap = [(np.sqrt((coords[:,c,0]-coords[:,:c,0])**2 + 
-  #                    (coords[:,c,1]-coords[:,:c,1])**2 + 
-  #                    (coords[:,c,2]-coords[:,:c,2])**2
-  #                   ) < bond_length) for c in range(1,args.nMon)]
+  #overlap = [(np.sqrt((coords[:,c,0]-coords[:,:c,0].T)**2 + 
+  #                    (coords[:,c,1]-coords[:,:c,1].T)**2 + 
+  #                    (coords[:,c,2]-coords[:,:c,2].T)**2
+  #                   ) < bond_length).sum() for c in range(1,args.nMon)]
+  #print sum(overlap), total*(total-1)/2
 
-  # wrap the coordinates across the boundary?
+  # check that bonds are the proper length
+  #for chain in coords:
+  #  vb = chain[:-1] - chain[1:]
+  #  mag_vb = np.sqrt(vb[:,0]**2 + vb[:,1]**2 + vb[:,2]**2)
+  #  print mag_vb
 
+  # reshape coordinates
   coords = coords.reshape((args.nMon * args.nChains, 3))
 
   # massage data into output file
@@ -82,9 +153,9 @@ def main():
   bonds = np.zeros((args.nChains * (args.nMon - 1), 4))
   bonds[:,0] = np.arange(args.nChains * (args.nMon - 1)) + 1
   bonds[:,1] = 1
-  numbers = np.arange(total).reshape((args.nChains,args.nMon))
+  numbers = np.arange(total).reshape((args.nChains,args.nMon)) + 1
   bonds[:,2] = numbers[:,:-1].reshape((args.nChains*(args.nMon-1)))
-  bonds[:,2] = numbers[:,1:].reshape((args.nChains*(args.nMon-1)))
+  bonds[:,3] = numbers[:,1:].reshape((args.nChains*(args.nMon-1)))
 
   # output coordinates
   write_xyz(args.output, np.concatenate((np.ones((total,1)),coords), axis=1))
