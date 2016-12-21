@@ -42,40 +42,25 @@ def read_height(file):
 
   return time, line
 
-def write_height(output, height, mode):
-
-  # open output file
-  with open(output, mode) as file:
-    # join and write height and time
-    file.write(height)
-
 def main():
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("-i", "--input", required=True)
+  parser.add_argument("-z", "--height", required=True)
+  parser.add_argument("-d", "--density", required=True)
   parser.add_argument("-o", "--output", required=True)
-  parser.add_argument("-t", "--time", type=int)
-  parser.add_argument("-s", "--step", type=int)
   parser.add_argument("-n", "--frames", type=int)
   args = parser.parse_args()
 
-  suffix = '_sparse'
-
-  with open(args.output+suffix+'.lammpstrj', 'w') as file:
+  with open(args.output, 'w') as file:
     file.write('')
 
-  with open(args.input, MODE) as file:
-    for n in range(args.step):
-      for s in range(args.frames/args.step):
-        time, box, frame = readTrj(file)
-        # time, frame = readFrame(file)
-        # time, height = read_height(file)
-        # time, density = read_density(file)
-      if time % args.time == 0:
-        write_traj(args.output+suffix, frame, box, time, mode='a')
-        # write_xyz(args.output+suffix, frame, time, 'a')
-        # write_height(args.output+suffix, height, 'a')
-        # write_density(args.output+suffix, density, time, 'a')
+  with open(args.height, MODE) as hfile, open(args.density, MODE) as dfile:
+    for n in range(args.frames):
+      time_h, height = read_height(hfile)
+      time_d, density = read_density(dfile)
+      
+      if time_h == time_d:
+      #write_density(args.output+suffix, density, time, 'a')
 
 if __name__ == '__main__':
   main()

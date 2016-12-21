@@ -15,6 +15,21 @@ def rotations(v, angle, axis):
 
   return R.dot(v)
 
+def ellipsoid(coords, phi=0, theta=0, axes=[1,1,1]):
+
+  coords -= coords.mean(0)
+  A = np.eye(3)*np.array(axes,dtype=float)**(-2)
+
+  Ay = rotations(A, theta, 1)
+  Ayz = rotations(Ay, phi, 2)
+
+  Ayz = np.einsum('ij,ki->kj',Ayz,coords)
+  Ayz = np.einsum('ij,ij',Ayz,coords)
+
+  Ayz -= 1
+ 
+  return Ayz
+
 def main():
 
   v = np.ones(3)

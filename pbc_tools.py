@@ -1,9 +1,11 @@
 import numpy as np
 
-def PBC(dx,x,interval):
+def PBC(dx,x,interval,cum=False):
   mask = (dx < interval[:,0])
+  if cum: mask = np.cumsum(mask,axis=1)
   x = x + 2*interval[:,1]*mask
   mask = (dx >= interval[:,1])
+  if cum: mask = np.cumsum(mask,axis=1)
   x = x + 2*interval[:,0]*mask
     
   return x
