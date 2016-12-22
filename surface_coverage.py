@@ -83,7 +83,7 @@ def main():
 
       frame = frame[np.argsort(frame[:,0])]
       frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]
-      frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]
+      #frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]
       particles = frame[frame[:,1] == 3][:,2:]
       polymers = frame[frame[:,1] == 1][:,2:]
       limits = np.zeros(2)
@@ -95,7 +95,7 @@ def main():
       upper30 = (particles[:,:,2] > (limits[1]-30)).sum()
       lower30 = (particles[:,:,2] < (limits[0]+30)).sum()
 
-      rc = 1.75
+      rc = 1.5
       a,b = 12.5 + rc,25 + rc
       nPart, nSite = 54, 4684
       
