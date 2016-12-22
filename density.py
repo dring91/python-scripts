@@ -2,7 +2,7 @@ import numpy as np
 from sys import argv, exit
 import argparse
 from conf_tools import readFrame, readTrj
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, OptimizeWarning
 
 NDIMS = 3
 AREA = 100*100
@@ -67,6 +67,17 @@ def sigmoidal(z, rhol, rhov, z0, d):
 
   return 0.5 * (rhol + rhov) - 0.5 * (rhol - rhov) * np.tanh(2*(z - z0)/d)
 
+def jac(z, rhol, rhov, z0, d):
+
+  sech = lambda x: 1/np.cosh(x)
+
+  J = [0.5 - 0.5 * np.tanh(2*(z-z0)/d),
+       0.5 * np.tanh(2*(z-z0)/d) - 0.5,
+       (rhol - rhov)*z0/d*sech(2*(z-z0)/d)**2,
+       (rhol - rhov)/d**2*(z-z0)*sech(2*(z-z0)/d)**2]
+
+  return J
+
 def main():
   
   # Command line args processing
@@ -80,6 +91,7 @@ def main():
   with open('cut-offs_'+outFile, 'w') as otp:
     otp.write('# heights calculated for multiple cut-offs\n')
 
+  height = 0
   with open(args.trajFile,'r') as inp:
     for n in range(args.nFrames):
       ### .lammpstrj
@@ -109,9 +121,15 @@ def main():
       density[:,0] -= cylinder[:,2].min()
 
       # Calculate fluid height via sigmoidal fitting
-      guess = [0.8, 0.1, 50, 3]
-      params, errors = curve_fit(sigmoidal, density[:,0], density[:,2], guess)
-      #height = params[2]
+      guess = [0.8, 0.1, height, 2]
+      bounds = [0, 105]
+
+      try:
+        params, errors = curve_fit(sigmoidal, density[:,0], density[:,2], guess, bounds=bounds, method='trf')
+      except RuntimeError:
+        params, errors = curve_fit(sigmoidal, density[:,0], density[:,2], guess, method='lm')
+
+      height = params[2]
 
       # Integrate real density to the appropriate cut-off
       cutOff = 0.85
@@ -132,10 +150,10 @@ def main():
       with open('height_'+outFile, 'a') as otp:
         np.savetxt(otp, [[time] + params.tolist() + [height85, height99, density[1,0]]], 
                         fmt='%d %.5f %.5f %.5f %.5f %.5f %.5f %.5f',
-                        header='time rhol rhov height interface height85 height99 polymers',comments='')
+                        header='time rhol rhov height interface height85 height99 polymers')
       with open('cut-offs_'+outFile, 'a') as otp:
         np.savetxt(otp, [[time] + heights + params.tolist()], fmt='%.5f',
-                        header='time rhol rhov height interface height85 height99 polymers',comments='')
+                        header='time rhol rhov height interface height85 height99 polymers')
       
   print 'Finished analyzing trajectory'
 
