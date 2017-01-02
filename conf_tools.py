@@ -176,7 +176,7 @@ def write_conf(filename,
     try:
       [otp.write(' '.join(line)+'\n') for line in atoms]
     except TypeError:
-      [otp.write('%d %d %d %f %f %f\n' % tuple(line)) for line in atoms]
+      [otp.write('%d %d %d %f %f %f %d %d %d\n' % tuple(line)) for line in atoms]
 
     if types["bonds"] > 0:
       # skip line    
