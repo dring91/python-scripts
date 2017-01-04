@@ -96,13 +96,14 @@ def main():
       particles = particles.reshape((54,4684,3))
       upper30 = (particles[:,:,2] > (limits[1]-30)).sum()
       lower30 = (particles[:,:,2] < (limits[0]+30)).sum()
+      middle = np.logical_and(particles[:,:,2] >= (limits[0]+30),particles[:,:,2] <= (limits[1]-30)).sum()
 
       rc = 1.5
       a,b = 12.5 + rc,25 + rc
       nPart, nSite = 54, 4684
       
       # select only monomers within a given shell
-      not_close = [0,0,0]
+      not_close = [0,0,0,0]
       particles = unwrap(particles,box)
       rotations, centers = calcTransformations(particles)
       for p in range(nPart):
@@ -121,12 +122,15 @@ def main():
           not_close[0] += zeros
           if site[2] > (limits[1]-30): not_close[1] += zeros
           if site[2] < (limits[0]+30): not_close[2] += zeros
+          if np.logical_and(site[2] <= (limits[1]-30),site[2] >= (limits[0]+30)): 
+            not_close[3] += zeros
       probability = [not_close[0] / float(nPart * nSite), 
                      not_close[1] / float(upper30), 
-                     not_close[2] / float(lower30)]
+                     not_close[2] / float(lower30),
+                     not_close[3] / float(middle)]
 
       with open(args.output,"a") as out:
-        out.write("%d %f %f %f\n" % tuple([time]+probability))
+        out.write("%d %f %f %f %f\n" % tuple([time]+probability))
 
 if __name__ == '__main__':
   main()
