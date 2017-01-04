@@ -72,14 +72,16 @@ def main():
   parser.add_argument("-i", "--input")
   parser.add_argument("-o", "--output")
   parser.add_argument("-n", "--nFrames", type=int)
+  parser.add_argument("-s", "--nSteps", type=int)
   args = parser.parse_args()
 
   with open(args.output,"w") as out:
     out.write('')
 
   with open(args.input, "r") as file:
-    for n in range(args.nFrames):
-      time, box, frame = readTrj(file)
+    for n in range(args.nSteps):
+      for s in range(args.nFrames/args.nSteps):
+        time, box, frame = readTrj(file)
 
       frame = frame[np.argsort(frame[:,0])]
       frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]

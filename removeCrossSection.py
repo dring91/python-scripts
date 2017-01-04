@@ -71,7 +71,6 @@ def makeHistogram(porosity,atoms,nBins,limits):
 def main():
   
   # Command line args processing
-  #trajFile, outFile, nFrames, nInsert, nSlices = getArgs(argv)
   args = getArgs(argv)
   
   outFile = '%s_I%d_B%d' % (args.output, args.nInsert, args.nSlices)
