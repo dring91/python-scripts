@@ -83,9 +83,12 @@ def main():
       for s in range(args.nFrames/args.nSteps):
         time, box, frame = readTrj(file)
 
+      # prepare frame for analysis
       frame = frame[np.argsort(frame[:,0])]
       frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]
       #frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]
+
+      # separate particle and polymer arrays and calculate box limits
       particles = frame[frame[:,1] == 3][:,2:]
       polymers = frame[frame[:,1] == 1][:,2:]
       limits = np.zeros(2)
@@ -94,10 +97,12 @@ def main():
 
       # reshape particle array
       particles = particles.reshape((54,4684,3))
+      # compute which sites are in different regions
       upper30 = (particles[:,:,2] > (limits[1]-30)).sum()
       lower30 = (particles[:,:,2] < (limits[0]+30)).sum()
       middle = np.logical_and(particles[:,:,2] >= (limits[0]+30),particles[:,:,2] <= (limits[1]-30)).sum()
 
+      # important constants
       rc = 1.5
       a,b = 12.5 + rc,25 + rc
       nPart, nSite = 54, 4684
