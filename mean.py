@@ -1,14 +1,21 @@
-#!/usr/bin/python
-
 import numpy as np
+import argparse
 
-def command(data, over=None):
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("-i", "--input")
+  args = parser.parse_args()
 
-  if over == 'rows':
-    over = 0
-  elif over == 'cols':
-    over = 1
+  with open(args.input, "r") as file:
+    data = np.loadtxt(file)
 
-  data = np.array(data,dtype=float)
+  mean = data.mean(0)
+  var = data.var(0)
+  stdev = np.sqrt(var)
 
-  return [data.mean(over)[0], np.average(data[:,0], weights=data[:,1])]
+  with open(args.input, "a") as file:
+    np.savetxt(file, mean.reshape((1,5)), "%d %f %f %f %f")
+    np.savetxt(file, stdev.reshape((1,5)), "%d %f %f %f %f")
+
+if __name__ == '__main__':
+  main()
