@@ -3,6 +3,7 @@ from sys import argv, exit
 import argparse
 from conf_tools import readFrame, readTrj
 from scipy.optimize import curve_fit, OptimizeWarning
+import matplotlib.pyplot as plt
 
 NDIMS = 3
 AREA = 100*100
@@ -121,7 +122,7 @@ def main():
       density[:,0] -= cylinder[:,2].min()
 
       # Calculate fluid height via sigmoidal fitting
-      guess = [0.8, 0.1, height, 2]
+      guess = [0.8, 0.05, height, 5]
       bounds = [0, 105]
 
       try:
@@ -131,6 +132,13 @@ def main():
 
       height = params[2]
 
+      #x = np.linspace(0,100,500)
+      #model = sigmoidal(x, *params)
+
+      #plt.plot(density[:,0], density[:,2],'o')
+      #plt.plot(x, model)
+      #plt.show()
+
       # Integrate real density to the appropriate cut-off
       cutOff = 0.85
       height85 = integrateHeight(density, cutOff, 3)
@@ -139,9 +147,9 @@ def main():
       cutOff = 0.99
       height99 = integrateHeight(density, cutOff, 3)
 
-      # compute different cut-off values
-      cutOffs = np.arange(0.85,0.99,0.01)
-      heights = [integrateHeight(density, cutOff, 3) for cutOff in cutOffs]
+      ## compute different cut-off values
+      #cutOffs = np.arange(0.85,0.99,0.01)
+      #heights = [integrateHeight(density, cutOff, 3) for cutOff in cutOffs]
 
       # output density and height values
       with open('density_'+outFile, 'a') as otp:
@@ -151,9 +159,9 @@ def main():
         np.savetxt(otp, [[time] + params.tolist() + [height85, height99, density[1,0]]], 
                         fmt='%d %.5f %.5f %.5f %.5f %.5f %.5f %.5f',
                         header='time rhol rhov height interface height85 height99 polymers')
-      with open('cut-offs_'+outFile, 'a') as otp:
-        np.savetxt(otp, [[time] + heights + params.tolist()], fmt='%.5f',
-                        header='time rhol rhov height interface height85 height99 polymers')
+      #with open('cut-offs_'+outFile, 'a') as otp:
+      #  np.savetxt(otp, [[time] + heights + params.tolist()], fmt='%.5f',
+      #                  header='time rhol rhov height interface height85 height99 polymers')
       
   print 'Finished analyzing trajectory'
 
