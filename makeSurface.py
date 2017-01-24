@@ -4,6 +4,8 @@ from conf_tools import *
 from pbc_tools import makeBox
 import numpy as np
 import argparse
+from numpy.random import rand
+import matplotlib.pyplot as plt
 
 MODE = 'r'
 
@@ -48,7 +50,7 @@ def main():
   
   parser = argparse.ArgumentParser()
   parser.add_argument('-o','--output',default="cylinder")
-  parser.add_argument('-r','--radius',default=25.0,type=float)
+  parser.add_argument('-r','--radius',type=float)
   parser.add_argument('-t','--atomtype',default=3,type=int)
   args = parser.parse_args()
 
@@ -56,25 +58,34 @@ def main():
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
   sideLength = 40.0 # 4*args.radius
 
-  # generate a surface with a hole in the center
-  surface = makeSurface(areaDensity, sideLength, args.radius)
-  ###### VERY IMPORTANT ######
-  # the rounding step is very important to getting a proper shape. 
-  # open question: is this inherent to the calculation or is it an error 
-  #                in the implementation?
-  surface = np.around(surface,6)
+  if args.radius is not None:
+    # generate a surface with a hole in the center
+    surface = makeSurface(areaDensity, sideLength, args.radius)
+    ###### VERY IMPORTANT ######
+    # the rounding step is very important to getting a proper shape. 
+    # open question: is this inherent to the calculation or is it an error 
+    #                in the implementation?
+    surface = np.around(surface,6)
 
-  box = makeBox(3, np.array([0.4,0.93,0]), surface)
-  # box = np.zeros((3,2))
-  # box[:2] = np.array([-20,20])
+    box = makeBox(3, np.array([0.4,0.93,0]), surface)
+    # box = np.zeros((3,2))
+    # box[:2] = np.array([-20,20])
 
-  # generate index information for configuration file
-  info = makeFile(surface,args.atomtype)
-  # combine coordinate and index info
-  atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
+    # generate index information for configuration file
+    info = makeFile(surface,args.atomtype)
+    # combine coordinate and index info
+    atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
+  else:
+    box = np.array([[-22.2461,22.2461],[-22.2461,22.2461],[-1.0,1.0]])
+    sides = box[:,1] - box[:,0]
+    n = int(sides.prod()*0.64/np.pi*6)
+    surface = sides * rand(n, 3) + box[:,0]
+
+    info = makeFile(surface,args.atomtype)
+    atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
 
   # generate input files for lammps and VMD
-  write_conf(args.output+'_out', atoms, title='Surface with cut-out R = %d' % args.radius, box=box)
+  write_conf(args.output+'_out', atoms, title='Random surface for substrate', box=box)
   write_xyz(args.output+'_out', atoms[:,2:])
   write_traj(args.output+'_out', np.delete(atoms,1,axis=1).astype(float), box, mode='w')
 
