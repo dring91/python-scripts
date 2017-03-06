@@ -39,7 +39,7 @@ def makeSurface(A, l, R):
 def makeFile(coords,atomtype):
 
   nRows = coords.shape[0]
-  info = np.zeros((nRows,3), dtype=int)
+  info = np.zeros((nRows,9), dtype=int)
   info[:,0] = np.arange(nRows)+1
   info[:,1] = 1
   info[:,2] = atomtype
@@ -49,9 +49,11 @@ def makeFile(coords,atomtype):
 def main():
   
   parser = argparse.ArgumentParser()
-  parser.add_argument('-o','--output',default="cylinder")
+  parser.add_argument('-o','--output',default="surface")
   parser.add_argument('-r','--radius',type=float)
   parser.add_argument('-t','--atomtype',default=3,type=int)
+  parser.add_argument('-f','--formats',nargs='+',choices={'lammps','conf','xyz'},
+                      default='conf')
   args = parser.parse_args()
 
   a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
@@ -71,10 +73,6 @@ def main():
     # box = np.zeros((3,2))
     # box[:2] = np.array([-20,20])
 
-    # generate index information for configuration file
-    info = makeFile(surface,args.atomtype)
-    # combine coordinate and index info
-    atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
   else:
     box = np.array([[-22.2461,22.2461],[-22.2461,22.2461],[-1.0,1.0]])
     sides = box[:,1] - box[:,0]
@@ -84,10 +82,19 @@ def main():
     info = makeFile(surface,args.atomtype)
     atoms = np.concatenate((info.astype('|S10'), surface.astype('|S10')), axis=1)
 
+  # generate index information for configuration file
+  info = makeFile(surface,args.atomtype)
+  atoms = info.astype('|S10')
+  # combine coordinate and index info
+  atoms[:,3:6] = surface.astype('|S10')
+
   # generate input files for lammps and VMD
-  write_conf(args.output+'_out', atoms, title='Random surface for substrate', box=box)
-  write_xyz(args.output+'_out', atoms[:,2:])
-  write_traj(args.output+'_out', np.delete(atoms,1,axis=1).astype(float), box, mode='w')
+  if 'conf' in args.formats:
+    write_conf(args.output+'_out', atoms, title='Random surface for substrate', box=box)
+  if 'xyz' in args.formats:
+    write_xyz(args.output+'_out', atoms[:,2:6])
+  if 'lammps' in args.formats:
+    write_traj(args.output+'_out', np.delete(atoms[:,:6],1,axis=1).astype(float), box, mode='w')
 
 if __name__ == '__main__':
   main()

@@ -3,6 +3,7 @@ import sys
 from conf_tools import *
 from pbc_tools import makeBox
 import numpy as np
+import argparse
 
 MODE = 'r'
 
@@ -39,7 +40,7 @@ def makeCylinder(A, (r,h)):
 def makeFile(coords):
 
   nRows = coords.shape[0]
-  info = np.zeros((nRows,3), dtype=int)
+  info = np.zeros((nRows,9), dtype=int)
   info[:,0] = np.arange(nRows)+1
   info[:,1] = 1
   info[:,2] = 3
@@ -47,41 +48,42 @@ def makeFile(coords):
   return info
 
 def main():
-  # get output filename from commandline
-  try:
-    filename = sys.argv[1]
-  except IndexError:
-    print "No Filename given"
-    sys.exit()
+
+  parser = argparse.ArgumentParser()
+  parser.add_argument('-o','--output',default="cylinder")
+  parser.add_argument('-r','--radius',type=float)
+  parser.add_argument('-l','--length',type=float,default=100)
+  parser.add_argument('-t','--atomtype',default=3,type=int)
+  parser.add_argument('-f','--formats',nargs='+',choices={'lammps','conf','xyz'},
+                      default='conf')
+  args = parser.parse_args()
 
   a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
 
-  # get cylinder dimensions from commandline
-  try:
-    cylDims = (float(sys.argv[2]),100)
-  except IndexError:
-    cylDims = (25,100)
-    print "Default R value used"
-
   # generate a cylinder with radius R and length L
-  cylinder = makeCylinder(areaDensity, cylDims)
+  cylinder = makeCylinder(areaDensity, (args.radius,args.length))
   ###### VERY IMPORTANT ######
   # the rounding step is very important to getting a proper shape. 
   # open question: is this inherent to the calculation or is it an error 
   #                in the implementation?
   cylinder = np.around(cylinder,6)
 
-  box = makeBox(3, np.array([0,0,0]), cylinder)
+  box = makeBox(3, np.array([1.0,1.0,0]), cylinder)
 
   # generate indices, molecule, and atom types
   info = makeFile(cylinder)
+  atoms = info.astype('|S10')
   # combine coordinate and index information
-  atoms = np.concatenate((info.astype('|S10'), cylinder.astype('|S10')), axis=1)
+  atoms[:,3:6] = cylinder.astype('|S10')
 
   # generate input files for VMD and LAMMPS
-  write_conf(filename+'_out', atoms, title='Capillary R = %d' % cylDims[0], box=box)
-  write_xyz(filename+'_out', atoms[:,2:])
+  if 'conf' in args.formats:
+    write_conf(args.output+'_out', atoms, title='Capillary R = %d' % args.radius, box=box)
+  if 'lammps' in args.formats:
+    write_traj(args.output+'_out', np.delete(atoms[:,:6],1,axis=1).astype(float), box, mode='w')
+  if 'xyz' in args.formats:
+    write_xyz(args.output+'_out', atoms[:,2:])
 
 if __name__ == '__main__':
   main()
