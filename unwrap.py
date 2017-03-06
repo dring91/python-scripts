@@ -2,7 +2,7 @@ from sys import argv, exit
 import numpy as np
 import argparse
 
-from conf_tools import readConf, write_conf, write_xyz
+from conf_tools import readConf, write_conf, write_xyz, write_traj
 from pbc_tools import unwrap, PBC
 
 def main():
@@ -11,47 +11,51 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument("-i","--input")
   parser.add_argument("-o","--output")
+  parser.add_argument("-d","--descrip",help="Header for file describing what it contains")
+  parser.add_argument("-l","--length",help="chain length of polymer molecule",type=int)
+  parser.add_argument("-t","--atomtype",help="atomtype ID for layer to unwrap",type=int)
+  parser.add_argument("--no-image-flags",dest="entries",action="store_const",const=6,
+                      default=9,help="switch to adjust number of entries for data flags")
   args = parser.parse_args()
   
   # read input file
   with open(args.input,'r') as file:
     box, atoms, bonds = readConf(file)
 
-  # convert lists to NumPy arrays
-  box = np.array(box, dtype=float)
-  atoms = np.array(atoms, dtype=float)
-  bonds = np.array(bonds, dtype=float)
-
   # sort the atom array
   atoms = atoms[np.argsort(atoms[:,0])]
   
   # generate array masks
-  polyMask = (atoms[:,2] == 1)
+  polyMask = (atoms[:,2] == args.atomtype)
 
   # extract subarrays based on atomtype
   polymers = atoms[polyMask]
 
-  # reshape the extracted array by molecule
-  nBeads = 350000
-  nMon = 10
-  nChains = nBeads / nMon
-  polymers = polymers.reshape((nChains, nMon, 6))
+  if args.entries == 6:
 
-  # unwrap the extracted array
-  polymers[:,:,3:] = unwrap(polymers[:,:,3:], box)
+    # reshape the extracted array by molecule
+    nBeads = len(polymers)
+    nChains = nBeads / args.length
+    polymers = polymers.reshape((nChains, args.length, args.entries))
 
-  # reshape the modified array so that it can be re-inserted
-  polymers = polymers.reshape((nBeads, 6))
+    # unwrap the extracted array
+    polymers[:,:,3:] = unwrap(polymers[:,:,3:], box)
+
+    # reshape the modified array so that it can be re-inserted
+    polymers = polymers.reshape((nBeads, args.entries))
+
+  elif args.entries == 9:
+
+    polymers[:,3:6] = polymers[:,3:6] + (box[:,1] - box[:,0]) * polymers[:,6:9]
 
   # insert extracted array back into the original
   atoms[polyMask] = polymers
   
   # write output to xyz and conf files
-  title = 'Renumbered N=10 configuration'
-  types = {"atoms":3, "bonds":1}
-  masses = [1,1,1]
-  write_conf(args.output, atoms, bonds, box, types, masses, title)
-  write_xyz(args.output, atoms[:,2:])  
+  types = {"atoms":4, "bonds":1}
+  masses = [1] * types['atoms']
+  write_conf(args.output, atoms[:,:args.entries], bonds, box, types, masses, args.descrip)
+  write_traj(args.output, np.delete(atoms[:,:6],1,1), box)
   
 if __name__ == "__main__":
   main()
