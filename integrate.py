@@ -14,7 +14,7 @@ def main():
   """ Script to integrate a system of first order differential equations """
 
   rho = 0.8 # sigma ** -3
-  mu = 4.3 # epsilon * tau * sigma ** -3  --> tau = sqrt( sigma ** 2 * m / epsilon )
+  mu = 10000 # 4.3 # epsilon * tau * sigma ** -3  --> tau = sqrt( sigma ** 2 * m / epsilon )
   r = 5 # sigma
   gamma = 0.39 # epsilon * sigma ** -2
   theta = 0.0*np.pi
