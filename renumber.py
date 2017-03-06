@@ -1,78 +1,92 @@
-from sys import argv, exit
 import numpy as np
 import argparse
 
 from conf_tools import readConf, write_conf, write_xyz, write_traj
+from pbc_tools import PBC, unwrap
 
 def main():
   
   # get commandline arguments
   parser = argparse.ArgumentParser()
-  parser.add_argument("-i","--input")
-  parser.add_argument("-o","--output")
+  parser.add_argument("-i","--input",help='input file to renumber')
+  parser.add_argument("-o","--output",help='name of output file')
+  parser.add_argument("-f","--formats",nargs='+',choices=['xyz','lammps','conf'],
+                      help='file formats to write output file to')
+  parser.add_argument("--rebuild",help='build bonds from scratch',action='store_true')
+  parser.add_argument("-d","--descrip",help='descriptive header for output file')
+  parser.add_argument("-l","--length",type=int,help="chain length of polymer")
+  parser.add_argument("--no-image-flags",dest="entries",action="store_const",const=6,
+                      default=9,help="switch to adjust number of entries for data flags")
   args = parser.parse_args()
   
   # read input file
   with open(args.input,'r') as file:
-    box, atoms, bonds = readConf(file, atype=['1','2','3','4'])
+    box, atoms, bonds = readConf(file)
 
-  # sort the atom array
+  # sort the atom and bond arrays
   atoms = atoms[np.argsort(atoms[:,0])]
+  bonds = bonds[np.argsort(bonds[:,2])]
 
-  # generate new atom ids
-  atoms[:,0] = np.arange(len(atoms))+1
+  # generate new atom and bond ids
+  atoms[:,0] = np.arange(atoms.shape[0])+1
+  bonds[:,0] = np.arange(bonds.shape[0])+1
   
+  # create unique set of atomtypes
+  atomtypes = set(atoms[:,2])
+  bondtypes = set(bonds[:,1])
+
   ## generate array masks
-  partMask = (atoms[:,2] >= 2)
-  polyMask = (atoms[:,2] == 1)
-  #surfMask = (atoms[:,2] == 2)
+  masks = []
+  for atomtype in atomtypes:
+    masks.append(atoms[:,2] == atomtype)
 
   ### extract subarrays based on atomtype
-  particles = atoms[partMask]
-  polymers = atoms[polyMask]
-  #surface = atoms[surfMask]
+  subarrays = []
+  for mask in masks:
+    subarrays.append(atoms[mask])
 
-  ## generate new polymer molecules
-  nBeads = len(polymers) # 350000
-  nMon = 10
-  #nPart = 54
-  nPart = 1
-  #nSites = 4684
-  nChains = nBeads / nMon
-  #nBonds = nChains * (nMon - 1)
-  #particles[:,1] = np.repeat(np.arange(nPart)+1,nSites)
-  particles[:,1] = nPart
-  #polymers[:,1] = np.repeat(np.arange(nChains)+1+nPart,nMon)
-  polymers[:,1] = 0
-  #surface[:,1] = nPart+nChains+1
+  # unwrap atoms
+  #try: subarrays[1][:,3:6] = subarrays[1][:,3:6] + subarrays[1][:,6:]*(box[:,1] - box[:,0])
+  #except ValueError: subarrays[1][:,3:] = unwrap(subarrays[1][:,3:],box)
 
-  ## number molecules
-  #particles[:,1] += surface[-1,1]
+  molecules = set(atoms[:,1].astype(int))
+  for i, mol in enumerate(molecules):
+    atoms[:,1][atoms[:,1].astype(int) == mol] = i+1
+  nBeads = len(subarrays[1])
+  nChains = nBeads / args.length
+  pairs = subarrays[1][:,0].reshape((nChains, args.length))
+  if args.rebuild:
+    nBonds = nChains * (args.length - 1)
+    bonds = np.ones((nChains, args.length - 1, 4))
+    bonds[:,:,2] = pairs[:,:-1]
+    bonds[:,:,3] = pairs[:,1:]
+    bonds = bonds.reshape((nBonds, 4))
+    bonds[:,0] = np.arange(nBonds) + 1
+  else:
+    nBonds = len(bonds)
+    bonds = bonds.reshape((nChains, args.length - 1, 4))
+    bonds[:,:,2] = pairs[:,:-1]
+    bonds[:,:,3] = pairs[:,1:]
+    bonds = bonds.reshape((nBonds, 4))
 
-  ### generate new bonds
-  #pairs = atoms[polyMask][:,0].reshape((nChains, nMon))
-  #bonds = np.ones((nChains, nMon - 1, 4))
-  #bonds[:,:,2] = pairs[:,:-1]
-  #bonds[:,:,3] = pairs[:,1:]
-  #bonds = bonds.reshape((nBonds, 4))
-  #bonds = bonds[np.argsort(bonds[:,2])]
-  #bonds[:,2:] += len(particles)
-  #nBonds = len(bonds)
-  #bonds[:,0] = np.arange(nBonds)+1
+  # generate correct box bounds
+  box[2,0] = atoms[:,5].min()
+  box[2,1] = atoms[:,5].max()
 
   ## reinsert subarrays back into the atom array
-  atoms[partMask] = particles
-  atoms[polyMask] = polymers
-  #atoms[surfMask] = surface
+  #for array, mask in zip(subarrays, masks):
+  #  atoms[mask] = array
 
   # write output to xyz and conf files
-  #title = 'Renumbered N=10 configuration'
-  title = 'Renumbered cylinder and N=10 polymer configuration'
-  types = {"atoms":2, "bonds":0}
+  types = {"atoms":len(atomtypes), "bonds":len(bondtypes)}
   masses = [1] * types["atoms"]
-  write_conf(args.output, atoms, bonds, box, types, masses, title)
-  write_xyz(args.output, atoms[:,2:6])  
-  write_traj(args.output, np.delete(atoms[:,:6],1,1), box, mode='w')  
+
+  if 'conf' in args.formats:
+    write_conf(args.output, atoms[:,:args.entries], bonds, box, types, masses, args.descrip)
+  if 'xyz' in args.formats:
+    write_xyz(args.output, atoms[:,2:6])  
+  if 'lammps' in args.formats:
+    write_traj(args.output, np.delete(atoms[:,:6],1,1), box, mode='w')  
   
 if __name__ == "__main__":
   main()
