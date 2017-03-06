@@ -73,7 +73,8 @@ def main():
   parser = argparse.ArgumentParser(description='read information for script exec')
   parser.add_argument('-i', '--input', required=True)
   parser.add_argument('-o', '--output', required=True)
-  parser.add_argument('-l', '--length', type=int, required=True)
+  parser.add_argument('-l', '--length', type=int, required=True,
+                      help='polymer chain length')
   parser.add_argument('-x', nargs=2, metavar=('xlo','xhi'), type=int)
   parser.add_argument('-y', nargs=2, metavar=('ylo','yhi'), type=int)
   parser.add_argument('-z', nargs=2, metavar=('zlo','zhi'), type=int)
@@ -87,12 +88,9 @@ def main():
   atomtype = 1
 
   # read in configuration file
-  with open(args.input, 'r') as inp:
-    box, atoms, bonds = readConf(inp,['1','2'])
-
-  atoms = np.array(atoms,dtype=float)
-  box = np.array(box,dtype=float)
-  bonds = np.array(bonds,dtype=float)
+  with open(args.input, 'r') as file:
+    box, atoms, bonds = readConf(file)
+  atoms = atoms[atoms[:,2] < 3]
 
   # set the vertical zero
   atoms[:,5] -= box[2,0]
