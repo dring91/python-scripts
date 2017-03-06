@@ -1,6 +1,6 @@
 import numpy as np
 
-def readConf(file, atype=['3','2','1'], cast=True):
+def readConf(file, cast=True):
 
   atoms = []
   box = []
@@ -12,7 +12,7 @@ def readConf(file, atype=['3','2','1'], cast=True):
       header = L[0]
     if len(L) > 0 and L[-1] in ['xhi','yhi','zhi']:
       box.append(L[:2])
-    elif len(L) > 2 and L[2] in atype and header == 'Atoms':
+    elif len(L) > 2 and header == 'Atoms':
       atoms.append(L)
     elif len(L) > 2 and header == 'Bonds':
       bonds.append(L)
@@ -20,8 +20,27 @@ def readConf(file, atype=['3','2','1'], cast=True):
   if cast:
     box = np.array(box,dtype=float)
     atoms = np.array(atoms,dtype=float)
-    bonds = np.array(bonds,dtype=float)
+    bonds = np.array(bonds,dtype=int)
       
+  return box, atoms, bonds
+
+def tupleConf(file, cast=True):
+
+  atoms = []
+  box = []
+  bonds = []
+  header = 'header'
+  for line in file:
+    L = line.split()
+    if len(L) > 0 and L[0] in ['Atoms','Bonds']:
+      header = L[0]
+    if len(L) > 0 and L[-1] in ['xhi','yhi','zhi']:
+      box.append(tuple(L[:2]))
+    elif len(L) > 2 and header == 'Atoms':
+      atoms.append(tuple(L))
+    elif len(L) > 2 and header == 'Bonds':
+      bonds.append(tuple(L))
+
   return box, atoms, bonds
 
 def readTrj(file, nCols=5):
@@ -57,6 +76,29 @@ def readTrj(file, nCols=5):
     line = file.readline().strip()
 
   return time, box, atoms
+
+def iTrj(file, nCols=5):
+
+  line = file.readline()
+  while (line != ''):
+    # read timestep
+    line = file.readline().strip()
+    time = int(line)
+    # read number of atoms
+    line = file.readline()
+    line = file.readline().strip()
+    nAtoms = int(line)
+    # read box size
+    line = file.readline()
+    box = np.fromfile(file, float, 6, ' ')
+    box = box.reshape((3,2))
+    # read atoms
+    line = file.readline()
+    atoms = np.fromfile(file, float, nAtoms*nCols, ' ')
+    atoms = atoms.reshape((nAtoms, nCols))
+    line = file.readline()
+
+    yield time, nAtoms, box, atoms
 
 def readFrame(file,nCols=4):
   line = file.readline().strip()
@@ -176,7 +218,10 @@ def write_conf(filename,
     try:
       [otp.write(' '.join(line)+'\n') for line in atoms]
     except TypeError:
-      [otp.write('%d %d %d %f %f %f %d %d %d\n' % tuple(line)) for line in atoms]
+      try:
+        [otp.write('%d %d %d %f %f %f\n' % tuple(line)) for line in atoms]
+      except TypeError:
+        [otp.write('%d %d %d %f %f %f %d %d %d\n' % tuple(line)) for line in atoms]
 
     if types["bonds"] > 0:
       # skip line    
