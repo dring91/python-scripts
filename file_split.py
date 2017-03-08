@@ -15,9 +15,6 @@ def main():
                       help='sections to write from configuration file')
   args = parser.parse_args()
 
-  #sections = {'Atoms','Bonds','Velocities','Masses'}
-  sections = {section for section in args.sections}
-
   # Open input file
   header = None
   with open(args.input, 'r') as file:
@@ -25,7 +22,7 @@ def main():
     for line in file:
       items = line.split()
       # scan through sections
-      for section in sections:
+      for section in args.sections:
         if len(items) > 0 and section == items[0]:
           # Assign the current section to the header flag
           header = section
@@ -36,7 +33,7 @@ def main():
       # write section out to file
       if header is not None:
         with open('_'.join([header,args.output]), 'a') as otp:
-          otp.write(' '.join([st.strip(line),str(len(items)),'\n']))
+          otp.write(line)
   
  
 if __name__ == "__main__":
