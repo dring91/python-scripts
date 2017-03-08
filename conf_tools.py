@@ -8,13 +8,13 @@ def readConf(file, cast=True):
   header = 'header'
   for line in file:
     L = line.split()
-    if len(L) > 0 and L[0] in ['Atoms','Bonds']:
+    if len(L) > 0 and L[0] in ['Atoms','Velocities','Bonds']:
       header = L[0]
     if len(L) > 0 and L[-1] in ['xhi','yhi','zhi']:
       box.append(L[:2])
-    elif len(L) > 2 and header == 'Atoms':
+    elif len(L) > 4 and header == 'Atoms':
       atoms.append(L)
-    elif len(L) > 2 and header == 'Bonds':
+    elif len(L) > 3 and header == 'Bonds':
       bonds.append(L)
 
   if cast:
