@@ -12,9 +12,9 @@ MODE = 'r'
 def makeSurface(A, l, R):
 
   # need to calculate m and n (number of sites in the x an y directions)
-  n, m = int(l*np.sqrt(2/(np.sqrt(3)*A))), int(l*np.sqrt(np.sqrt(3)/A/2))
+  n, m = int(l[0]*np.sqrt(2/(np.sqrt(3)*A))), int(l[1]*np.sqrt(np.sqrt(3)/A/2))
   # distances between sites
-  dx, dy = l/n, l/m
+  dx, dy = l[0]/n, l[1]/m
   # if there are an odd number of rows, add an extra row (m+1)
   if (m % 2):
     m += 1
@@ -30,7 +30,7 @@ def makeSurface(A, l, R):
       surface[i*n:(i+1)*n,1] = i*dy
 
   # shift center to position (0,0)
-  surface[:,:2] -= 0.5*l #-50.0
+  surface[:,:2] -= [0.5*l[0],0.5*l[1]] #-50.0
   # remove sites from a the center within a circle of radius R
   surface = surface[np.sqrt(surface[:,0]**2 + surface[:,1]**2) > R]
 
@@ -54,15 +54,16 @@ def main():
   parser.add_argument('-t','--atomtype',default=3,type=int)
   parser.add_argument('-f','--formats',nargs='+',choices={'lammps','conf','xyz'},
                       default='conf')
+  parser.add_argument('--dims',dest='sideLengths',nargs=2,type=float,default=40)
   args = parser.parse_args()
 
   a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
   areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
-  sideLength = 40.0 # 4*args.radius
+  #sideLength = 40.0 # 4*args.radius
 
   if args.radius is not None:
     # generate a surface with a hole in the center
-    surface = makeSurface(areaDensity, sideLength, args.radius)
+    surface = makeSurface(areaDensity, args.sideLengths, args.radius)
     ###### VERY IMPORTANT ######
     # the rounding step is very important to getting a proper shape. 
     # open question: is this inherent to the calculation or is it an error 
