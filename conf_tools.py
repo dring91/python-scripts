@@ -1,4 +1,8 @@
 import numpy as np
+import h5py as h5
+
+def readH5MD(file):
+  pass
 
 def readConf(file, cast=True):
 
