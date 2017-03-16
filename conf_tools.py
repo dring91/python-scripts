@@ -1,5 +1,6 @@
 import numpy as np
 import h5py as h5
+#import sqlite3 as sql
 
 def readH5MD(file):
   pass
@@ -115,6 +116,17 @@ def readFrame(file,nCols=4):
   atoms = atoms.reshape((nAtoms,nCols))
 
   return time, atoms
+
+def readSQL(cursor,step):
+  connection.execute('select time from frames where step=?',step)
+  time = connection.fetchone()
+  connection.execute('select * from atoms_%d' % step)
+  atoms = np.array(connection.fetchall())
+  connection.execute('select * from box_%d' % step)
+  box = np.array(connection.fetchall())
+  box = box.reshape((3,2))
+
+  return time, box, atoms
 
 def write_traj(filename, atoms, box, time=0, mode='w'):
   atoms[:,2:5] = (atoms[:,2:5] - box[:,0]) / (box[:,1] - box[:,0])
