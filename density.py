@@ -1,44 +1,15 @@
 import numpy as np
 from sys import argv, exit
-import argparse
+from argparse import ArgumentParser
 from conf_tools import readFrame, readTrj
 from scipy.optimize import curve_fit, OptimizeWarning
 import matplotlib.pyplot as plt
+from functools import partial
+from Jacobian import jac
 
 NDIMS = 3
 AREA = 100*100
 
-def getArgs(argv):
-  
-  parser = argparse.ArgumentParser()
-  parser.add_argument('-t', '--trajFile')
-  parser.add_argument('-o', '--output')
-  parser.add_argument('-n', '--nFrames', type=int)
-  parser.add_argument('-b', '--binSize', type=float)
-  parser.add_argument('-r', type=float)
-
-  return parser.parse_args()
-  
-def interpolate(x, low, high):
-  if x <= high[0] and x >= low[0]:
-    slope = (high[1] - low[1])/(high[0] - low[0])
-    return slope*(x - low[0]) + low[1]
-  else:
-    print 'x out of range'
-    exit(0)
-
-def integrateHeight(data, cutOff, col=2):
-  # filter values above and below cutoff
-  above = data[data[:,col] > cutOff]
-  below = data[data[:,col] <= cutOff]
- 
-  try:
-    height = interpolate(cutOff, below[-1,col::-col], above[0,col::-col])
-  except IndexError:
-    height = 0
-  
-  return height
- 
 def makeHistogram(atoms,R,binSize,limits):
   # make a histogram with different sized bins
   nBins = int((limits[1]-limits[0])/binSize)
@@ -63,45 +34,45 @@ def makeHistogram(atoms,R,binSize,limits):
   return hist
   
 def sigmoidal(z, rhol, rhov, z0, d):
-
-  # params = [rhol, rhov, z0, d]
-
   return 0.5 * (rhol + rhov) - 0.5 * (rhol - rhov) * np.tanh(2*(z - z0)/d)
 
-def jac(z, rhol, rhov, z0, d):
-
-  sech = lambda x: 1/np.cosh(x)
-
-  J = [0.5 - 0.5 * np.tanh(2*(z-z0)/d),
-       0.5 * np.tanh(2*(z-z0)/d) - 0.5,
-       (rhol - rhov)*z0/d*sech(2*(z-z0)/d)**2,
-       (rhol - rhov)/d**2*(z-z0)*sech(2*(z-z0)/d)**2]
-
-  return J
+no_vapor = partial(sigmoidal, rhov=0) 
+const_interface_width = partial(no_vapor, d=2) 
+const_liquid_density = partial(const_interface_width, rhol=0.8) 
 
 def main():
-  
+
   # Command line args processing
-  args = getArgs(argv)
-  outFile = '%s_b%.1f' % (args.output, args.binSize)
+  parser = ArgumentParser()
+  parser.add_argument('-i', '--input')
+  parser.add_argument('-o', '--output')
+  parser.add_argument('-n', '--nFrames', type=int)
+  parser.add_argument('-b', '--binSize', type=float, 
+                      help='estimate of the histogram bin size')
+  parser.add_argument('-r', type=float, help='radius of cylinder for calculating density')
+
+  args = parser.parse_args()
+  
+  outFile = '%s_B%d' % (args.output, args.binSize)
   
   with open('density_'+outFile, 'w') as otp:
     otp.write('# Density profiles\n')
   with open('height_'+outFile, 'w') as otp:
     otp.write('# height profiles at two cut-offs\n')
-  with open('cut-offs_'+outFile, 'w') as otp:
-    otp.write('# heights calculated for multiple cut-offs\n')
+    otp.write('time rhol rhov height interface polymers height85 height99\n')
+  with open('errors_'+outFile, 'w') as otp:
+    otp.write('# errors from fit\n')
 
   height = 0
-  with open(args.trajFile,'r') as inp:
+  with open(args.input,'r') as inp:
     for n in range(args.nFrames):
       ### .lammpstrj
       # read data and separate by atomtypes
       time, box, frame = readTrj(inp)
       frame = frame[frame[:,0].argsort()]
       #frame[:,2:] = frame[:,2:] * (box[:,1] - box[:,0]) + box[:,0]
-      polymers = frame[frame[:,1] == 1][:,2:5]
-      cylinder = frame[frame[:,1] == 3][:,2:]
+      polymers = frame[frame[:,1] == 2][:,2:5]
+      cylinder = frame[frame[:,1] == 4][:,2:]
 
       # ### .xyz
       # time, frame = readFrame(inp)
@@ -123,47 +94,59 @@ def main():
 
       # Calculate fluid height via sigmoidal fitting
       guess = [0.8, 0.05, height, 5]
-      bounds = [0, 105]
+      bounds = (0, 105)
 
-      try:
-        params, errors = curve_fit(sigmoidal, density[:,0], density[:,2], guess, bounds=bounds, method='trf')
-      except RuntimeError:
-        params, errors = curve_fit(sigmoidal, density[:,0], density[:,2], guess, method='lm')
+      # trf method
+      params, covariance = curve_fit(sigmoidal, density[:,0], density[:,2], guess, bounds=bounds)
+      guess = [0.8, height, 5]
+      params, covariance = curve_fit(no_vapor, density[:,0], density[:,2], guess, bounds=bounds)
+      guess = [0.8, height]
+      params, covariance = curve_fit(const_interface_width, density[:,0], density[:,2], guess, bounds=bounds)
+      guess = [height]
+      params, covariance = curve_fit(const_liquid_density, density[:,0], density[:,2], guess, bounds=bounds)
+
+      # dogbox method
+      params, covariance = curve_fit(sigmoidal, density[:,0], density[:,2], guess, bounds=bounds, method='dogbox')
+      guess = [0.8, height, 5]
+      params, covariance = curve_fit(no_vapor, density[:,0], density[:,2], guess, bounds=bounds, method='dogbox')
+      guess = [0.8, height]
+      params, covariance = curve_fit(const_interface_width, density[:,0], density[:,2], guess, bounds=bounds, method='dogbox')
+      guess = [height]
+      params, covariance = curve_fit(const_liquid_density, density[:,0], density[:,2], guess, bounds=bounds, method='dogbox')
+
+      # lm method
+      params, covariance = curve_fit(sigmoidal, density[:,0], density[:,2], guess, method='lm')
+      guess = [0.8, height, 5]
+      params, covariance = curve_fit(no_vapor, density[:,0], density[:,2], guess, method='lm')
+      guess = [0.8, height]
+      params, covariance = curve_fit(const_interface_width, density[:,0], density[:,2], guess, method='lm')
+      guess = [height]
+      params, covariance = curve_fit(const_liquid_density, density[:,0], density[:,2], guess, method='lm')
 
       height = params[2]
 
-      #x = np.linspace(0,100,500)
-      #model = sigmoidal(x, *params)
+      # MSE (Mean Square Error) is a measure of fit
+      #MSE = np.einsum('i...,...i',covariance,jac())
+      #MSE = np.einsum('i...,i...',jac(),MSE)
 
-      #plt.plot(density[:,0], density[:,2],'o')
-      #plt.plot(x, model)
-      #plt.show()
-
-      # Integrate real density to the appropriate cut-off
-      cutOff = 0.85
-      height85 = integrateHeight(density, cutOff, 3)
-
-      # Integrate real density to the appropriate cut-off
-      cutOff = 0.99
-      height99 = integrateHeight(density, cutOff, 3)
-
-      ## compute different cut-off values
-      #cutOffs = np.arange(0.85,0.99,0.01)
-      #heights = [integrateHeight(density, cutOff, 3) for cutOff in cutOffs]
+      # Interpolate integrated density to the appropriate cut-off
+      cutOffs = [0.85, 0.99] 
+      heights = np.interp(cutOffs, density[:,3], density[:,0])
 
       # output density and height values
       with open('density_'+outFile, 'a') as otp:
         header = '# time: %d\n#  z  counts  density  cum_density' % time
         np.savetxt(otp, density, fmt='%.5f', header=header, footer='\n', comments='')
       with open('height_'+outFile, 'a') as otp:
-        np.savetxt(otp, [[time] + params.tolist() + [height85, height99, density[1,0]]], 
-                        fmt='%d %.5f %.5f %.5f %.5f %.5f %.5f %.5f',
-                        header='time rhol rhov height interface height85 height99 polymers')
-      #with open('cut-offs_'+outFile, 'a') as otp:
-      #  np.savetxt(otp, [[time] + heights + params.tolist()], fmt='%.5f',
-      #                  header='time rhol rhov height interface height85 height99 polymers')
+        np.savetxt(otp, [[time] + params.tolist() + [density[1,0]] + heights.tolist()], 
+                   fmt='%.5f')
+      with open('errors_'+outFile, 'a') as otp:
+        try:
+          np.savetxt(otp, covariance.reshape((1,len(params)**2)))
+        except AttributeError:
+          np.savetxt(otp, np.zeros((1,len(params)**2)))
       
-  print 'Finished analyzing trajectory'
+  print('Finished analyzing trajectory')
 
 if __name__ == '__main__':
   main()
