@@ -64,12 +64,14 @@ def main():
     box = np.zeros((3,2))
     h = volume / (np.pi * args.radius**2)
     box[2,1] = h
-    box[:2,1] = args.radius
-    box[:2,0] = -args.radius
+    box[:2,1] = args.radius+0.5
+    box[:2,0] = -args.radius-0.5
 
     # Generate random starting points for chains
     start_pts = np.random.rand(args.nChains, 3)
+    # scale starting points to r, theta, z values
     start_pts *= [args.radius-0.5, 2*np.pi, h]
+    # convert starting point values to x and y
     start_pts[:,0], start_pts[:,1] = start_pts[:,0]*np.cos(start_pts[:,1]), \
                                      start_pts[:,0]*np.sin(start_pts[:,1])
 
