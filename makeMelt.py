@@ -23,41 +23,46 @@ def rotations(v, angle, axis, inv=False):
 
 def main():
 
-  ## Algorithm
-  # perform random walks to place polymers (method from Kremer and Grest)
-  # random walk with bond length = 0.97
-  # restrict backfolding by: abs(r[i-1] - r[i+1]) > 1.02
+  """ Algorithm
+      perform random walks to place polymers (method from Kremer and Grest)
+      random walk with bond length = 0.97
+      restrict backfolding by: abs(r[i-1] - r[i+1]) > 1.02
+  """
 
   # parse input
   parser = argparse.ArgumentParser()
-  parser.add_argument("-o","--output")
-  parser.add_argument("-c","--nChains", type=int)
-  parser.add_argument("-m","--nMon", type=int)
-  parser.add_argument("--ar", type=float)
-  parser.add_argument("-r","--radius",type=float)
-  parser.add_argument("--reflect",action='store_true')
-  parser.add_argument("-b", "--boundary", choices=['box','cylinder'])
+  parser.add_argument("-o","--output",help="name of output file sans extension")
+  parser.add_argument("-c","--nChains",type=int,help="Number of chains in melt")
+  parser.add_argument("-m","--nMon", type=int,help="Number of monomers to a chain")
+  parser.add_argument("-l","--limits",nargs='+',type=float,help="Box limits")
+  parser.add_argument("-r","--radius",type=float,help="Radius of cylindrical melt")
+  parser.add_argument("--reflect",default=[],nargs='+',choices={'x','y','z'})
+  parser.add_argument("-b", "--boundary", choices=['plane','cylinder'])
+  parser.add_argument("-d","--density",type=float)
   args = parser.parse_args()
 
   # total number of lj beads in melt
   total = args.nMon * args.nChains
   bond_length = 0.97
+  dims = {'x':0,'y':1,'z':2}
 
   # approximate melt density and volume
-  density = 0.8
-  volume = total / density
+  volume = total / args.density
   
-  if args.boundary == 'box':
+  if args.boundary == 'plane':
     # make box
     box = np.zeros((3,2))
-    h = (volume / args.ar**2)**(1/3.0)
+    box[:2] = np.array(args.limits).reshape((2,2))
+    h = volume / np.diff(box[:2],axis=1).prod()
     box[2,1] = h
-    box[:2,1] = h * args.ar
-    box = (box.T - 0.5 * (box[:,1] + box[:,0])).T
+    print(box)
 
     # Generate random starting points for chains
     start_pts = np.random.rand(args.nChains, 3)
-    start_pts = (start_pts - 0.5) * (box[:,1] - box[:,0])
+    start_pts[:,:2],start_pts[:,2] = (start_pts[:,:2] - 0.5) * (box[:2,1] - box[:2,0]),\
+                                     start_pts[:,2] * h
+    #info = np.stack((np.arange(args.nChains)+1,np.ones(args.nChains)),axis=1)
+    #write_traj('start-pts', np.concatenate((info,start_pts),axis=1), box, mode='w')
 
   if args.boundary == 'cylinder':
     # make box
@@ -84,17 +89,15 @@ def main():
 
   # initialize array of cartesian coordinates
   coords = np.zeros((args.nChains, args.nMon, 3))
-  # generate the first bond vector
-  coords[:,1,0] = bond_length*np.sin(angles[:,0,0])*np.cos(angles[:,0,1])
-  coords[:,1,1] = bond_length*np.sin(angles[:,0,0])*np.sin(angles[:,0,1])
-  coords[:,1,2] = bond_length*np.cos(angles[:,0,0])
-  # rotate vectors onto each other to obtain their cartesian coordinates
-  for i in range(args.nChains):
-    for j in range(2,args.nMon):
-      coords[i,j] = rotations(
-                    rotations(coords[i,j-1],angles[i,j-1,1],1,inv=True),
-                                            np.pi-angles[i,j-1,0],2,inv=True)
- 
+  # generate the bond vectors in local, relative coordinate systems
+  coords[:,1:,0] = bond_length*np.sin(angles[:,:,0])*np.cos(angles[:,:,1])
+  coords[:,1:,1] = bond_length*np.sin(angles[:,:,0])*np.sin(angles[:,:,1])
+  coords[:,1:,2] = bond_length*np.cos(angles[:,:,0])
+  # rotate vectors onto each other to obtain their local, non-relative coordinates
+  for chain, angle in zip(coords, angles):
+    for head, tail, (phi, theta) in zip(chain[1:-1],chain[2:],angle[1:]):
+      tail = rotations(rotations(head,theta,1,inv=True),np.pi-phi,2,inv=True)
+
   # accumulate xyz coordinates to form a walk
   coords = np.cumsum(coords, axis=1)
 
@@ -103,21 +106,42 @@ def main():
   coords = coords + start_pts
   coords = np.swapaxes(coords,0,1)
 
-  # deal with reflection
-  if args.reflect:
-    for _ in range(args.nMon):
-      mask = (coords[:,:,0]**2+coords[:,:,1]**2)>(args.radius-0.5)**2
-      coords -= 2*(coords-args.radius+0.5)*np.stack((mask,mask,mask),axis=2)
+  # compute bond lengths
+  bond_lengths = np.diff(coords,axis=1)
+  bond_lengths = np.sqrt(np.sum(bond_lengths**2, axis=2))
+  print(bond_lengths.min(), bond_lengths.max())
 
   # reshape coordinates
   coords = coords.reshape((args.nMon * args.nChains, 3))
 
+  # deal with reflection
+  types = np.ones(len(coords))
+  if args.reflect != [] and args.boundary == 'cylinder':
+    for _ in range(args.nMon//10):
+      mask = (coords[:,0]**2+coords[:,1]**2)>(args.radius-0.5)**2
+      angle = np.arctan2(coords[:,1], coords[:,0])
+      boundary = (args.radius-0.5)*np.stack((np.cos(angle),np.sin(angle)),axis=1)
+      coords[:,:2] -= 2*(coords[:,:2]-boundary)*np.stack((mask,mask),axis=1)
+  if args.reflect != [] and args.boundary == 'plane':
+    for bnd in args.reflect:
+      for _ in range(args.nMon//10):
+        above, below = coords[:,dims[bnd]] > box[dims[bnd],1], coords[:,dims[bnd]] < box[dims[bnd],0]
+        coords[:,dims[bnd]] -= 2*(coords[:,dims[bnd]]-box[dims[bnd],1])*above
+        coords[:,dims[bnd]] -= 2*(coords[:,dims[bnd]]-box[dims[bnd],0])*below
+
+  # compute bond lengths
+  coords = coords.reshape((args.nChains,args.nMon,3))
+  bond_lengths = np.diff(coords,axis=1)
+  bond_lengths = np.sqrt(np.sum(bond_lengths**2, axis=2))
+  print(bond_lengths.min(), bond_lengths.max())
+  coords = coords.reshape((args.nMon * args.nChains, 3))
+
   # massage data into output file
-  atoms = np.zeros((total,6))
+  atoms = np.zeros((total,9))
   atoms[:,0] = np.arange(total)+1
   atoms[:,1] = np.repeat(np.arange(args.nChains)+1,args.nMon)
-  atoms[:,2] = 1
-  atoms[:,3:] = coords
+  atoms[:,2] = types
+  atoms[:,3:6] = coords
 
   bonds = np.zeros((args.nChains * (args.nMon - 1), 4))
   bonds[:,0] = np.arange(args.nChains * (args.nMon - 1)) + 1
@@ -126,10 +150,14 @@ def main():
   bonds[:,2] = numbers[:,:-1].reshape((args.nChains*(args.nMon-1)))
   bonds[:,3] = numbers[:,1:].reshape((args.nChains*(args.nMon-1)))
 
+  diff = coords[bonds[:,2].astype(int)-1] - coords[bonds[:,3].astype(int)-1]
+  lengths = np.sqrt(diff[:,0]**2 + diff[:,1]**2 + diff[:,2]**2)
+
   # output coordinates
   #write_xyz(args.output, np.concatenate((np.ones((total,1)),coords), axis=1))
-  #write_conf(args.output, atoms, bonds, box, {"atoms":1, "bonds":1})
-  write_traj(args.output, np.delete(atoms,1,axis=1), box, mode='w')
+  write_conf(args.output, atoms, bonds, box, {"atoms":1, "bonds":1})
+  #box[2] = (coords[:,2].min(), coords[:,2].max())
+  write_traj(args.output, np.delete(atoms[:,:6],1,axis=1), box, mode='w')
   
 if __name__ == '__main__':
   main()
