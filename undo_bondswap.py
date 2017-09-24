@@ -2,7 +2,7 @@ import numpy as np
 from sys import argv, exit
 import os
 from getopt import *
-from conf_tools import write_conf, write_xyz
+from conf_tools import write_conf, write_traj
 from copy import copy
 
 def PBC(x,boundaries):
@@ -95,14 +95,19 @@ def main():
 
   # unshuffle bonds
   unshuffled = unshuffleAtoms(copy(atoms), copy(bonds), ends, nMon)
-  atoms = [[str(i+1)]+atom for i,atom in enumerate(unshuffled)] + \
-          [[key]+atom for key,atom in atoms.iteritems() if atom[1] == '2']
+  atoms = np.array([[str(i+1)]+atom for i,atom in enumerate(unshuffled)] + \
+          [[key]+atom for key,atom in atoms.iteritems() if atom[1] == '2']).astype(float)
   bonds = [[str(i+1),'1',key,val] for i,(key,val) in enumerate(bonds.iteritems())]
 
+  bonded = atoms[atoms[:,2] == 1][:,3:].reshape((-1,nMon,3))
+  bonded = np.diff(bonded, axis=1)
+  print(np.sqrt(bonded[:,:,0]**2 + bonded[:,:,1]**2 + bonded[:,:,2]**2).mean(1))
+
   # write the new atoms list and the bonds to a file
-  suffix = '_unshuffled'
-  write_conf(inFile+suffix, atoms, bonds, 'unshuffled conf', [2,1], box, [1,1])
-  write_xyz(inFile+suffix, [atom[2:6] for atom in atoms])
+  data = (atoms, bonds, box)
+  options = {'masses':[1]*2,'types':{'atoms':2,'bonds':1},'title':'unshuffled configuration'}
+  write_conf(inFile+'_unshuffled', *data, **options)
+  write_traj(inFile+'_unshuffled', np.delete(atoms,1,1), np.array(box).astype(float))
 
   print 'Finished Analyzing Trajectory'
       
