@@ -5,6 +5,10 @@ from getopt import *
 from conf_tools import write_conf, write_traj
 from copy import copy
 
+from conf_tools import readConf
+from argparse import ArgumentParser
+import matplotlib.pyplot as plt
+
 def PBC(x,boundaries):
   
   if x < boundaries[0]:
@@ -35,21 +39,6 @@ def GetAtoms(file):
       bonds.update({L[2]:L[3]})
   
   return atoms, bonds, box
-
-def getArgs(argv):
- 
-  try:
-    opts, args = getopt(argv[1:],'i:l:')
-  except GetoptError:
-    print 'undo_bondswap.py -i <filename> -l <chainLength>'
-    exit(2)
-  for opt, arg in opts:
-    if opt == '-i':
-      inFile = arg
-    elif opt == '-l':
-      chainLength = arg
- 
-  return inFile, int(chainLength)
 
 def getEnds(atoms, bonds):
   # find them by counting up the number of times an atom occurs in bonds
@@ -85,31 +74,31 @@ def unshuffleAtoms(atoms, bonds, ends, nMon):
 
 def main():
   
-  inFile, nMon = getArgs(argv)
+  parser = ArgumentParser()
+  parser.add_argument('-i','--input')
+  args = parser.parse_args()
 
-  with open(inFile+'.conf', 'r') as inp:
-    atoms, bonds, box = GetAtoms(inp)
+  with open(args.input, 'r') as file:
+    types, box, atoms, bonds = readConf(file)
 
-  # search for all the chain ends in bonds and store in new array
-  ends = getEnds(atoms, bonds)
-
-  # unshuffle bonds
-  unshuffled = unshuffleAtoms(copy(atoms), copy(bonds), ends, nMon)
-  atoms = np.array([[str(i+1)]+atom for i,atom in enumerate(unshuffled)] + \
-          [[key]+atom for key,atom in atoms.iteritems() if atom[1] == '2']).astype(float)
-  bonds = [[str(i+1),'1',key,val] for i,(key,val) in enumerate(bonds.iteritems())]
-
-  bonded = atoms[atoms[:,2] == 1][:,3:].reshape((-1,nMon,3))
-  bonded = np.diff(bonded, axis=1)
-  print(np.sqrt(bonded[:,:,0]**2 + bonded[:,:,1]**2 + bonded[:,:,2]**2).mean(1))
-
-  # write the new atoms list and the bonds to a file
-  data = (atoms, bonds, box)
-  options = {'masses':[1]*2,'types':{'atoms':2,'bonds':1},'title':'unshuffled configuration'}
-  write_conf(inFile+'_unshuffled', *data, **options)
-  write_traj(inFile+'_unshuffled', np.delete(atoms,1,1), np.array(box).astype(float))
-
-  print 'Finished Analyzing Trajectory'
-      
+  #print(np.mean(bonds[:,2] - bonds[:,3]))
+  xs, ys, zs = atoms[:,3], atoms[:,4], atoms[:,5] # - atoms[:,6:9] * (box[:,1] - box[:,0])
+  diffs = np.stack((xs[bonds[:,2]] - xs[bonds[:,3]],
+                    ys[bonds[:,2]] - ys[bonds[:,4]],
+                    zs[bonds[:,2]] - zs[bonds[:,5]]), axis=0)
+  dists = np.sqrt(diffs[:,0]**2+diffs[:,1]**2+diffs[:,2]**2)
+  fx, x = np.histogram(np.abs(diffs[:,0]), bins='auto')
+  fy, y = np.histogram(np.abs(diffs[:,1]), bins='auto')
+  fz, z = np.histogram(np.abs(diffs[:,2]), bins='auto')
+  fr, r = np.histogram(dists, bins='auto')
+  
+  fig, axis = plt.subplots()
+  axis.plot(x[:-1]+np.diff(x)/2,fx,label='x') 
+  axis.plot(y[:-1]+np.diff(y)/2,fy,label='y') 
+  axis.plot(z[:-1]+np.diff(z)/2,fz,label='z') 
+  axis.plot(r[:-1]+np.diff(r)/2,fr,label='r') 
+  axis.legend()
+  plt.show()
+     
 if __name__ == '__main__':
   main()
