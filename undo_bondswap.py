@@ -1,77 +1,47 @@
 import numpy as np
 from sys import argv, exit
-import os
-from getopt import *
-from conf_tools import write_conf, write_traj
 from copy import copy
 
-from conf_tools import readConf
+from conf_tools import readConf, write_conf, write_traj
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
+from numpy.linalg import norm
 
-def PBC(x,boundaries):
+def check_bond_lengths(coords, bonds, plot=True):
+  ## calculate the bond vector
+  diffs = coords[bonds[:,2]-1] - coords[bonds[:,3]-1]
+  ## calculate bond length
+  dists = np.sqrt(diffs[:,0]**2+diffs[:,1]**2+diffs[:,2]**2)
+  ## generate histograms of bond length and vector components
+  fx, x = np.histogram(np.abs(diffs[:,0]), bins='auto')
+  fy, y = np.histogram(np.abs(diffs[:,1]), bins='auto')
+  fz, z = np.histogram(np.abs(diffs[:,2]), bins='auto')
+  fr, r = np.histogram(dists, bins='auto') # should be symmetric and centered at 1
   
-  if x < boundaries[0]:
-    x = x + 2*boundaries[1]
-  elif x >= boundaries[1]:
-    x = x + 2*boundaries[0]
+  ## plot histograms of bonds
+  if plot:
+    fig, (comps, total) = plt.subplots(ncols=2)
+    comps.plot(x[:-1]+np.diff(x)/2,fx,label='x') 
+    comps.plot(y[:-1]+np.diff(y)/2,fy,label='y') 
+    comps.plot(z[:-1]+np.diff(z)/2,fz,label='z') 
+    total.semilogy(r[:-1]+np.diff(r)/2,fr,label='r') 
+    comps.legend()
+    total.legend()
+    fig.tight_layout()
+    plt.show()
 
-  return x
+def rearrange_molecules(atoms, bonds):
 
-def GetAtoms(file):
+  nChains = 1000
+  nMon = 100
+  new_atoms = np.zeros((nChains, nMon, 9))
+  for n in range(nMon-1):
+    heads = bonds[np.isin(bonds[:,2],bonds[:,3],invert=True)]
+    bonds = bonds[np.isin(bonds[:,2],bonds[:,3],invert=False)]
+    new_atoms[:,n] = atoms[heads[:,2]-1]
 
-  atoms = {}
-  bonds = {}
-  box = []
-  section = 'header'
-  for line in file:
-    L = line.split()
-    if len(L) > 0 and (L[0] == 'Atoms' or L[0] == 'Velocities' or L[0] == 'Bonds'):
-      section = L[0]
-    elif len(L) > 3 and (L[3] == 'xhi' or L[3] == 'yhi' or L[3] == 'zhi'):
-      box.append(L[:2])
-    elif len(L) > 2 and L[2] in ['1','2'] and section == 'Atoms':
-      try:
-        atoms.update({L[0]:L[1:9]})
-      except IndexError:
-        atoms.update({L[0]:L[1:6]})
-    elif len(L) > 1 and L[1] == '1' and section == 'Bonds':
-      bonds.update({L[2]:L[3]})
-  
-  return atoms, bonds, box
-
-def getEnds(atoms, bonds):
-  # find them by counting up the number of times an atom occurs in bonds
-  atom_count = dict((key,0) for (key,value) in atoms.iteritems())
-  bond_atoms = [item for (key, value) in bonds.iteritems() 
-                     for item in (key, value)]
-  for atom in bond_atoms:
-    atom_count[atom] += 1
-  ends = [key for (key,value) in atom_count.iteritems() if value == 1]
-  return ends
-
-def unshuffleAtoms(atoms, bonds, ends, nMon):
-  # loop over bond ends array
-  # build a new list of atoms by picking a chain end and adding atoms
-    # when an atom is added, remove it from the atoms list
-  # if chainLength is reached and the last atom is an end, you're good
-  # repeat until all bond ends are used up
-
-  unshuffled = []
-  # unshuffle all the 'forwards' chains and then flip the 'backwards' ones and unshuffle the remaining
-  for tail in ends:
-    if tail in bonds.keys():
-      atom = tail
-      unshuffled.append(atoms[atom]) 
-      for n in range(nMon-1):
-        atom = bonds.pop(atom)
-        unshuffled.append(atoms.pop(atom)) 
-    elif tail in bonds.values():
-      # print 'Value in dict reversed'
-      continue
-
-  return unshuffled
-
+  return new_atoms
+ 
 def main():
   
   parser = ArgumentParser()
@@ -81,24 +51,18 @@ def main():
   with open(args.input, 'r') as file:
     types, box, atoms, bonds = readConf(file)
 
-  #print(np.mean(bonds[:,2] - bonds[:,3]))
-  xs, ys, zs = atoms[:,3], atoms[:,4], atoms[:,5] # - atoms[:,6:9] * (box[:,1] - box[:,0])
-  diffs = np.stack((xs[bonds[:,2]] - xs[bonds[:,3]],
-                    ys[bonds[:,2]] - ys[bonds[:,4]],
-                    zs[bonds[:,2]] - zs[bonds[:,5]]), axis=0)
-  dists = np.sqrt(diffs[:,0]**2+diffs[:,1]**2+diffs[:,2]**2)
-  fx, x = np.histogram(np.abs(diffs[:,0]), bins='auto')
-  fy, y = np.histogram(np.abs(diffs[:,1]), bins='auto')
-  fz, z = np.histogram(np.abs(diffs[:,2]), bins='auto')
-  fr, r = np.histogram(dists, bins='auto')
-  
-  fig, axis = plt.subplots()
-  axis.plot(x[:-1]+np.diff(x)/2,fx,label='x') 
-  axis.plot(y[:-1]+np.diff(y)/2,fy,label='y') 
-  axis.plot(z[:-1]+np.diff(z)/2,fz,label='z') 
-  axis.plot(r[:-1]+np.diff(r)/2,fr,label='r') 
-  axis.legend()
-  plt.show()
-     
+  ## sort atoms by atomid
+  atoms = atoms[atoms[:,0].argsort()]
+  ## unwrap atoms using image flags
+  atoms[:,3:6] = atoms[:,3:6] + atoms[:,6:9] * (box[:,1] - box[:,0])
+  ## calculate bond lengths to confirm proper unwrapping and bonding of molecules
+  check_bond_lengths(atoms[:,3:6], bonds, plot=False)
+  ## rearrange bonds
+  atoms = rearrange_molecules(atoms, bonds)
+  ## Calculate end-to-end distances
+  diffs = np.diff(atoms[:,:,3:6],axis=1)
+  dists = diffs.sum(1)
+  print(norm(diffs,axis=1), norm(dists,axis=1))
+    
 if __name__ == '__main__':
   main()
