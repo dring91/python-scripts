@@ -107,15 +107,24 @@ def main():
   coords[:,1:,1] = bond_length*np.sin(angles[:,:,0])*np.sin(angles[:,:,1])
   coords[:,1:,2] = bond_length*np.cos(angles[:,:,0])
   # rotate vectors onto each other to obtain their local, non-relative coordinates
-  for chain, angle in zip(coords, angles):
-    for head, tail, (phi, theta) in zip(chain[1:-1],chain[2:],angle[1:]):
-      tail = rotations(rotations(head,theta,1,inv=True),np.pi-phi,2,inv=True)
+  #for chain, angle in zip(coords, angles):
+  #  for head, tail, (phi, theta) in zip(chain[1:-1],chain[2:],angle[1:]):
+  #    tail = rotations(rotations(head,theta,1,inv=True),np.pi-phi,2,inv=True)
+
+  coords[:,1:-1] = np.array([[rotations(rotations(head,theta,1,inv=True),
+                                        np.pi-phi,2,inv=True)
+                      for head, tail, (phi, theta) in zip(chain[1:-1],chain[2:],angle[1:])]
+                      for chain, angle in zip(coords, angles)])
 
   # accumulate xyz coordinates to form a walk
   coords = np.cumsum(coords, axis=1)
 
-  ## add starting points
-  roords = np.swapaxes(coords,0,1)
+  # rotate chains
+  #coords = np.array([rotations(rotations(chain,angle[0,1],1),np.pi-angle[0,0],2) 
+  #                   for chain, angle in zip(coords, angles)])
+
+  # add starting points
+  coords = np.swapaxes(coords,0,1)
   coords = coords + start_pts
   coords = np.swapaxes(coords,0,1)
 
