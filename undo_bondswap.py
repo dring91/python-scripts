@@ -15,11 +15,13 @@ def PBC(x,boundaries):
 
   return x
 
-def GetAtoms(file):
+def GetAtoms(file, moleculetype):
 
-  atoms = {}
+  atoms = []
+  molecules = {}
   bonds = {}
   box = []
+  types = {}
   section = 'header'
   for line in file:
     L = line.split()
@@ -27,15 +29,16 @@ def GetAtoms(file):
       section = L[0]
     elif len(L) > 3 and (L[3] == 'xhi' or L[3] == 'yhi' or L[3] == 'zhi'):
       box.append(L[:2])
-    elif len(L) > 2 and L[2] in ['1','2'] and section == 'Atoms':
-      try:
-        atoms.update({L[0]:L[1:9]})
-      except IndexError:
-        atoms.update({L[0]:L[1:6]})
+    elif len(L) > 2 and L[2] == 'types':
+      types.update({L[1]:int(L[0])})
+    elif len(L) > 2 and L[1] == moleculetype and section == 'Atoms':
+      molecules.update({L[0]:L[1:]})
+    elif len(L) > 2 and L[1] != moleculetype and section == 'Atoms':
+      atoms.append(L)
     elif len(L) > 1 and L[1] == '1' and section == 'Bonds':
       bonds.update({L[2]:L[3]})
   
-  return atoms, bonds, np.array(box,dtype=float)
+  return np.array(atoms), molecules, bonds, np.array(box,dtype=float), types
 
 def getEnds(atoms, bonds):
   # find them by counting up the number of times an atom occurs in bonds
@@ -59,43 +62,44 @@ def unshuffleAtoms(atoms, bonds, ends, nMon):
   for tail in ends:
     if tail in bonds.keys():
       atom = tail
-      unshuffled.append(atoms[atom]) 
+      unshuffled.append([atom] + atoms[atom]) 
       for n in range(nMon-1):
         atom = bonds.pop(atom)
-        unshuffled.append(atoms.pop(atom)) 
+        unshuffled.append([atom] + atoms.pop(atom)) 
     elif tail in bonds.values():
       # print 'Value in dict reversed'
       continue
 
-  return unshuffled
+  return np.array(unshuffled)
 
 def main():
   
   parser = ArgumentParser()
   parser.add_argument('-i','--input')
   parser.add_argument('-l','--chainlength',type=int)
+  parser.add_argument('--polymer', type=int)
   args = parser.parse_args()
 
   with open(args.input+'.conf', 'r') as file:
-    atoms, bonds, box = GetAtoms(file)
+    atoms, molecules, bonds, box, types = GetAtoms(file, args.polymer)
 
   # search for all the chain ends in bonds and store in new array
-  ends = getEnds(atoms, bonds)
+  ends = getEnds(molecules, bonds)
 
   # unshuffle bonds
-  unshuffled = unshuffleAtoms(copy(atoms), copy(bonds), ends, args.chainlength)
-  atoms = np.array([[str(i+1)]+atom for i,atom in enumerate(unshuffled)] + \
-          [[key]+atom for key,atom in atoms.items() if atom[1] == '2']).astype(float)
+  unshuffled = unshuffleAtoms(copy(molecules), copy(bonds), ends, args.chainlength)
+  atoms = np.concatenate((unshuffled,atoms),axis=0) 
   bonds = [[str(i+1),'1',key,val] for i,(key,val) in enumerate(bonds.items())]
 
   atoms[:,3:6] = atoms[:,3:6] + atoms[:,6:9] * (box[:,1] - box[:,0])
-  bonded = atoms[atoms[:,2] == 1][:,3:6].reshape((-1,args.chainlength,3))
+  bonded = atoms[atoms[:,2] == args.polymer][:,3:6].reshape((-1,args.chainlength,3))
   bonded = np.diff(bonded, axis=1)
   print(np.sqrt(bonded[:,:,0]**2 + bonded[:,:,1]**2 + bonded[:,:,2]**2).mean(1))
 
   # write the new atoms list and the bonds to a file
+  atoms[:,1] += 1
   data = (atoms, bonds, box)
-  options = {'masses':[1]*2,'types':{'atoms':2,'bonds':1},'title':'unshuffled configuration'}
+  options = {'masses':[1]*types['atom'],'types':types,'title':'unshuffled configuration'}
   write_conf(args.input+'_unshuffled', *data, **options)
   write_traj(args.input+'_unshuffled', np.delete(atoms[:,:6],1,1), np.array(box).astype(float))
 
