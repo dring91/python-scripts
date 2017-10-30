@@ -107,10 +107,6 @@ def main():
   coords[:,1:,1] = bond_length*np.sin(angles[:,:,0])*np.sin(angles[:,:,1])
   coords[:,1:,2] = bond_length*np.cos(angles[:,:,0])
   # rotate vectors onto each other to obtain their local, non-relative coordinates
-  #for chain, angle in zip(coords, angles):
-  #  for head, tail, (phi, theta) in zip(chain[1:-1],chain[2:],angle[1:]):
-  #    tail = rotations(rotations(head,theta,1,inv=True),np.pi-phi,2,inv=True)
-
   coords[:,1:-1] = np.array([[rotations(rotations(head,theta,1,inv=True),
                                         np.pi-phi,2,inv=True)
                       for head, tail, (phi, theta) in zip(chain[1:-1],chain[2:],angle[1:])]
@@ -118,10 +114,6 @@ def main():
 
   # accumulate xyz coordinates to form a walk
   coords = np.cumsum(coords, axis=1)
-
-  # rotate chains
-  #coords = np.array([rotations(rotations(chain,angle[0,1],1),np.pi-angle[0,0],2) 
-  #                   for chain, angle in zip(coords, angles)])
 
   # add starting points
   coords = np.swapaxes(coords,0,1)
@@ -146,7 +138,7 @@ def main():
       coords[:,:2] -= 2*(coords[:,:2]-boundary)*np.stack((mask,mask),axis=1)
   if args.reflect != [] and args.boundary == 'plane':
     for bnd in args.reflect:
-      for _ in range(args.nMon//10):
+      for _ in range(args.nMon):
         above, below = coords[:,dims[bnd]] > box[dims[bnd],1], coords[:,dims[bnd]] < box[dims[bnd],0]
         coords[:,dims[bnd]] -= 2*(coords[:,dims[bnd]]-box[dims[bnd],1])*above
         coords[:,dims[bnd]] -= 2*(coords[:,dims[bnd]]-box[dims[bnd],0])*below
@@ -162,7 +154,7 @@ def main():
   atoms = np.zeros((total,9))
   atoms[:,0] = np.arange(total)+1
   #atoms[:,1] = np.repeat(np.arange(args.nChains)+1,args.nMon)
-  chain = list(range(args.nMon//2)) + list(range(args.nMon - args.nMon//2)[::-1])
+  chain = list(range(1,args.nMon//2+1)) + list(range(1,args.nMon - args.nMon//2 + 1)[::-1])
   atoms[:,1] = np.tile(chain,args.nChains)
   atoms[:,2] = types
   atoms[:,3:6] = coords
