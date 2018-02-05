@@ -101,7 +101,6 @@ def main():
   data = (atoms, bonds, box)
   options = {'masses':[1]*types['atom'],'types':types,'title':'unshuffled configuration'}
   write_conf(args.input+'_unshuffled', *data, **options)
-  write_traj(args.input+'_unshuffled', np.delete(atoms[:,:6],1,1), np.array(box).astype(float))
 
 if __name__ == '__main__':
   main()
