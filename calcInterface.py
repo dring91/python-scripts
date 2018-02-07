@@ -194,24 +194,25 @@ def main():
   nAve = 1
   circ = None
   frames = []
+  interfaces = []
   with open(trajFile,'r') as inp:
     for n in range(nSteps):
       # How should block averaging of interfaces be done?
       # t, atoms = combineFrames(inp,nAve)
-      # t, atoms = readFrame(inp)
-      t, box, atoms = readTrj(inp)
+      t, atoms = readFrame(inp)
+      #t, box, atoms = readTrj(inp)
 
       # remove vaporized chains by uncommenting last two mask conditions
-      # mask = (atoms[:,0] == 1) # & (atoms[:,3] < 20) & (abs(atoms[:,2]) < 60)
-      # atoms = atoms[mask][:,1:]
-      mask = (atoms[:,1] == 1)
-      atoms = atoms[mask][:,2:]
-      atoms = atoms * (box[:,1] - box[:,0]) + box[:,0]
+      mask = (atoms[:,0] == 1) # & (atoms[:,3] < 20) & (abs(atoms[:,2]) < 60)
+      atoms = atoms[mask][:,1:]
+      #mask = (atoms[:,1] == 1)
+      #atoms = atoms[mask][:,2:]
+      #atoms = atoms * (box[:,1] - box[:,0]) + box[:,0]
       # Find the center of mass in the xy direction and center droplet
       atoms, center = centerAtoms(atoms)
 
       # # make box
-      # box = np.array([atoms.min(0)-0.01,atoms.max(0)+0.01]).T
+      box = np.array([atoms.min(0)-0.01,atoms.max(0)+0.01]).T
       # box[1,:] += [-7,7]
       atoms[:,2] -= box[2,0]
       box[2,:] -= box[2,0]
@@ -234,13 +235,15 @@ def main():
           # pyplot.plot(interface[:,0],interface[:,1],'o')
           circ = pyplot.Circle((0,z0), radius=R, fill=False)
           frames.append([t*0.002,angle,center])
+          interfaces.append(interface)
 
-    #       plotInterface(atoms,box,interface,circ,(t,angle))
-    #   pyplot.show()
+      #    plotInterface(atoms,box,interface,circ,(t,angle))
+      #pyplot.show()
 
     # plotAngle(frames)
     # pyplot.show()
-    writeData(outFile,frames)
+    # writeData(outFile,frames)
+    np.save(outFile+'.npy',interfaces)
  
     print 'Finished analyzing trajectory'
 

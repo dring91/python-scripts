@@ -4,88 +4,27 @@ from scipy.optimize import curve_fit, leastsq
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 from conf_tools import readTrj, readFrame
-from lmfit import Model, Parameters
+from copy import copy
 
-#def combineFrames(file, read_file=readFrame, nCombine=1):
-#  
-#  time, atoms = readFrame(file)
-#  l = len(atoms)
-#  combined = np.zeros((l*nCombine,4))
-#  combined[0:l] = atoms
-#  for n in range(nCombine-1):
-#    _, atoms = read_file(file)
-#    combined[l*(n+1):l*(n+2)] = atoms
-#    
-#  return time, combined
-# 
-#def fitDensity(op, z, density):
-#  
-#  if op(1,2):
-#    guess = [0.8,-40,-1]
-#    fstr = 'bo'
-#  else:
-#    guess = [0.8,40,1]
-#    fstr = 'go'
-#  mask = op(density[:,0],0)
-#  if sum(mask) < 3:
-#    return None
-#
-#  try:
-#    params, cov = curve_fit(rho,density[mask][:,0],density[mask][:,1],guess)
-#  except RuntimeError:
-#    print('z = %.2f slice not fit' % z)
-#  else:
-#    # Save the "half-density" value to its z-slice
-#    if 0.7 < params[0] < 1: # cov[1,1] < 10**3 and not np.isinf(cov[1,1]):      
-#      # plotRhoY(z, density,mask,fstr,params)
-#      return params[1]
-#    
-#def findCylinderInterface(atoms, box):
-#
-#  # define resolution of the z (slices) and y (bins) coordinates
-#  # There are ~60k atoms per frame
-#  # 60,000 / 15 / 50 = 80 atoms per cell on average
-#  # for 5 combined frames, the value is 400
-#  zRes = 15
-#  yRes = 50
-#  # sort atoms according to slice (ragged list)
-#  slices, zs, dz = partitionAtoms(atoms, box, zRes)
-#
-#  interfacial = []
-#  rhoz = []
-#  # iterate over z slices
-#  for index, (slice, z) in enumerate(zip(slices,zs)):
-#    # for the nth slice, calculate the radial density
-#    density = createHistogram(slice, box, yRes, dz)
-#    # fit density to sigmoidal function
-#    yl = fitDensity(lt,z,density)
-#    if yl is not None:
-#      interfacial.append([yl,z])
-#    yr = fitDensity(ge,z,density)
-#    if yr is not None:
-#      interfacial.append([yr,z])
-#    # if yl is not None and yr is not None:
-#      # rhoz.append([z,density[(yl < density[:,0]) & (density[:,0] < yr)][:,1].mean()])
-#    # rhoz.append([z,density[density[:,1] > 0][:,1].mean()])
-#  # rhoz = np.array(rhoz)
-#  interfacial = np.array(interfacial)
-#
-#  return interfacial # [interfacial[:,1] == rhoz[:,0][rhoz[:,0] < p[1]]]
-#
-#def contactAngle(interface,box):
-#  # fit interfacial atom coordinates to a circle
-#  interface[:,1] -= box[2,0]
-#  R = lambda y0, z0: np.sqrt((interface[:,0] - y0)**2 + (interface[:,1] - z0)**2)
-#  # res = lambda z0: R(z0) - R(z0).mean()
-#  res = lambda args: R(*args) - R(*args).mean()
-#  popt, pcov = leastsq(res, [interface[:,0].mean(),-interface[:,1].mean()])
-#  # print popt
-#  # angle = np.arccos(popt[1]/popt[0])*180.0/np.pi
-#  angle = np.arccos(-popt[1]/R(*popt).mean())*180.0/np.pi
-#
-#  return angle, popt[1], R(*popt).mean()
+def rho(z, rhol, ze, l): return rhol/2*(1-np.tanh(2*(z-ze)/l))
 
-def rho(z, rho, ze, l): return rho/2*(1-np.tanh(2*(z-ze)/l))
+def jacobian(z, rhol, ze, l): 
+
+  return np.array([(1-np.tanh(2*(z-ze)/l))/2, 
+                  -z/l*rhol/np.cosh(2*(z-ze)/l)**2,
+                  rhol*(z-ze)/l**2/np.cosh(2*(z-ze)/l)**2]).T
+
+def contact_angle(interface, weights, box):
+  # fit interfacial atom coordinates to a circle by approximating radius
+  interface[:,1] -= box[2,0]
+  R = lambda y,z: np.sqrt((interface[:,0] - y)**2 + (interface[:,1] - z)**2)
+  # calculate objective function
+  obj = lambda args: R(*args) - np.average(R(*args), weights=weights/weights.max())
+  (y0, z0), _ = leastsq(obj, (interface[:,0].mean(), interface[:,1].mean()))
+  # calculate the angle at the surface
+  angle = np.arccos(-z0 / R(y0, z0).mean()) * 180/np.pi
+
+  return angle, (y0, z0), R(y0, z0).mean()
  
 def main():
   
@@ -94,9 +33,16 @@ def main():
   parser.add_argument('-o','--output')
   parser.add_argument('-n','--steps',type=int)
   parser.add_argument('-r','--radius',type=float)
+  parser.add_argument('--plot',action='store_true')
   args = parser.parse_args()
 
+  with open(args.output, 'w') as file: 
+    file.write('## Contact angle time series\n# time angle (y0,  z0)\n')
+  #with open(args.output + '-interface', 'w') as file:
+  #  file.write('## Interface coordinates for contact angle\n# (y,  z)\n')
+
   frames = []
+  interfaces = []
   with open(args.input,'r') as inp:
     for n in range(args.steps):
       time, box, atoms = readTrj(inp)
@@ -107,34 +53,64 @@ def main():
       atoms[:,1] -= center
 
       # find interfacial atoms
-      hist, z_edges, y_edges = np.histogram2d(atoms[:,2], atoms[:,1], bins=(15,60))
-      centers = lambda x: np.diff(x) + x[:-1]
+      hist, z_edges, y_edges = np.histogram2d(atoms[:,2], atoms[:,1], bins=(20,40), range=((0,40),(-50,50)))
+      centers = lambda x: np.diff(x)/2 + x[:-1]
       ys, zs = centers(y_edges), centers(z_edges)
       density = hist / np.mean(np.sort(hist.flatten())[::-1][:10])
-      print(density.shape)
 
-      fig, (hi,lo) = plt.subplots(nrows=2)
-      
-      interface_model = Model(rho)
-      params = Parameters()
-      params.add('rho', value=0.85, vary=True, min=0.8, max=1.0)
-      params.add('ze', value=0.0, vary=True, min=35, max=45)
-      params.add('l', value=5.0, vary=True, min=1.0, max=6)
+      if args.plot: fig, (hi,lo) = plt.subplots(nrows=2)
       
       l, r = ys<=0, ys>0
-      for z,d in zip(zs[:1],density[:1]):
-        params['ze'].set(value=40) #np.sqrt(args.radius**2-z**2))
-        #left = interface_model.fit(-ys[l],z=d[l],params=params)
-        right = interface_model.fit(ys[r],z=d[r],params=params,fit_kws={'ftol':1e-12,'maxfev':1000})
-        #hi.plot(-ys[l],left.best_fit)
-        hi.plot(ys[r],right.best_fit)
-        #hi.plot(-ys[l],d[l])
-        hi.plot(ys[r],d[r],label='{:.1f}'.format(z))
+      radius, rhol = 40, 0.8
+      guess=(rhol, 1, 0.1)
+      interface = []
+      params = []
+      for z,d in zip(zs,density):
+        try: left,  _ = curve_fit(rho, -ys[l]/radius, d[l], p0=guess, method='lm')
+        except RuntimeError: left = copy(guess)
+        try: right, _ = curve_fit(rho,  ys[r]/radius, d[r], p0=guess, method='lm')
+        except RuntimeError: right = copy(guess)
+        if left[0] > 0.84 and left[0] < 0.95: 
+          if args.plot:
+            hi.plot(-ys[l], rho(-ys[l]/radius, *left),color='b')
+            hi.scatter(-ys[l],d[l],color='y',label='{:.1f}'.format(z))
+            hi.scatter(left[1]*radius,rhol/2,color='r')
+          interface.append([-left[1]*radius,z])
+          params.append(left)
+        if right[0] > 0.84 and right[0] < 0.95: 
+          if args.plot:
+            hi.plot(ys[r], rho(ys[r]/radius, *right),color='b')
+            hi.scatter(ys[r],d[r],color='y',label='{:.1f}'.format(z))
+            hi.scatter(right[1]*radius,rhol/2,color='r')
+          interface.append([right[1]*radius,z])
+          params.append(right)
+      params = np.array(params)
+      interfaces.append(interface)
+      interface = np.array(interface)
 
-      handle = lo.pcolor(ys, zs, density)
-      fig.colorbar(handle,orientation='vertical')
-      fig.tight_layout()
-      plt.show()
+      angle, (y0, z0), r = contact_angle(interface, 1/params[:,2], box)
+
+      if args.plot:
+        circle = plt.Circle((y0,z0), radius=r, fill=False)
+        handle = lo.pcolor(y_edges, z_edges, density)
+        cbar = fig.colorbar(handle,orientation='vertical')
+        cbar.set_label(r'$\rho\sigma^{3}$')
+        lo.scatter(interface[:,0], interface[:,1],color='r')
+        lo.add_patch(circle)
+        lo.set_aspect('equal')
+        hi.set_xlabel(r'$y/\sigma$')
+        hi.set_ylabel(r'$\rho\sigma^{3}$')
+        lo.set_xlabel(r'$y/\sigma$')
+        lo.set_ylabel(r'$z/\sigma$')
+        fig.tight_layout()
+        plt.show()
+
+      with open(args.output, 'a') as file: 
+        file.write('{:d} {:.5f} {:.5f} {:.5f}\n'.format(time, angle, center, z0))
+      #with open(args.output + '-interface', 'ab') as file:
+      #  np.savetxt(file, interface, fmt='%f %f', comments='', footer=' ')
+
+    np.save(args.output + '-interface.npy', np.array(interfaces))
 
     print('Finished analyzing trajectory')
 
