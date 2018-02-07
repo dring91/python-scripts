@@ -1,9 +1,4 @@
 import numpy as np
-#import h5py as h5
-#import sqlite3 as sql
-
-def readH5MD(file):
-  pass
 
 def readConf(file, cast=True):
 
@@ -43,6 +38,32 @@ def readConf(file, cast=True):
     angles = np.array(angles,dtype=int)
       
   return types, box, atoms, velocities, bonds, angles
+
+def read_sections(file, sections):
+
+  ## initialize a dictionary of all the types in the section
+  types = OrderedDict()
+  box = []
+  config = OrderedDict((section,[]) for section in sections)
+  ## add header comments to config and remember to 'pop' them before writing sections
+  config['comments'] = []
+  header,comment = 'header','comment'
+  for line in file:
+    L = line.split()
+    if len(L) > 2 and L[2] == 'types':
+      types[L[1]] = L[0]
+    if len(L) > 3 and L[3] in ['xhi','yhi','zhi']:
+      box.append(L[:2])
+    if len(L) > 0 and L[0] in sections:
+      header,comment = L[0],L[1:]
+      config['comments'].append(comment) 
+    elif len(L) > 0 and ' '.join(L[:2]) in sections:
+      header,comment = ' '.join(L[:2]),L[2:]
+      config['comments'].append(comment) 
+    elif len(L) > 1 and header in config:
+      config[header].append(L)
+
+  return types, box, config
 
 def tupleConf(file, cast=True):
 
@@ -133,17 +154,6 @@ def readFrame(file,nCols=4):
 
   return time, atoms
 
-def readSQL(cursor,step):
-  connection.execute('select time from frames where step=?',step)
-  time = connection.fetchone()
-  connection.execute('select * from atoms_%d' % step)
-  atoms = np.array(connection.fetchall())
-  connection.execute('select * from box_%d' % step)
-  box = np.array(connection.fetchall())
-  box = box.reshape((3,2))
-
-  return time, box, atoms
-
 def write_traj(filename, atoms, box, time=0, mode='w', scaled=False, bnds=('pp','pp','pp')):
   if scaled: 
     atoms[:,2:5] = (atoms[:,2:5] - box[:,0]) / (box[:,1] - box[:,0])
@@ -171,6 +181,43 @@ def write_xyz(filename, atoms, time=0, mode='w'):
       [otp.write('%s %s %s %s\n' % tuple(line)) for line in atoms]
     except TypeError:
       [otp.write('%d %f %f %f\n' % tuple(line)) for line in atoms]
+
+def write_sections(filename,
+                   types=OrderedDict([("Atoms",1)]),
+                   box=[['-1','1'],['-1','1'],['-1','1']],
+                   config=OrderedDict([('Masses',[1]),('Atoms',[1,1,1,0.0,0.0,0.0,0,0,0])]),
+                   title=''):
+  
+  with open(filename+'.conf','w') as file:  
+    # write title line and skip a line
+    file.write(title+'\n\n')
+    
+    # write number of atoms and number of bonds and skip a line
+    file.write(str(len(config['Atoms']))+' atoms\n')
+    if "bond" in types: file.write(str(len(config['Bonds']))+' bonds\n')
+    if "angle" in types: file.write(str(len(config['Angles']))+' angles\n')
+    file.write('\n')
+    
+    # write types and skip a line
+    for name, num in types.items():
+      file.write(' '.join([num, name, 'types\n']))
+    file.write('\n')
+    
+    # write box dimensions and skip a line
+    dims = 'xyz'
+    [file.write('{0} {1} {2}lo {2}hi\n'.format(lo,hi,dim)) for dim,(lo,hi) in zip(dims,box)]
+    file.write('\n')
+
+    # pop off header comments
+    comments = config.pop('comments')
+
+    # construct body with sections
+    for comment,(section,data) in zip(comments,config.items()):
+      print(section)
+      file.write('{} {}\n'.format(section,' '.join(comment)))
+      file.write('\n')
+      [file.write(" ".join(line)+'\n') for line in data]
+      file.write('\n')
 
 def write_conf(filename,
                atoms,
