@@ -47,8 +47,6 @@ def makeHistogram(atoms,R,binSize,limits):
 
 def sigmoidal(z, rhol, rhov, z0, d):
 
-  # params = [rhol, rhov, z0, d]
-
   return 0.5 * (rhol + rhov) - 0.5 * (rhol - rhov) * np.tanh(2*(z - z0)/d)
 
 def jac(z, rhol, rhov, z0, d):

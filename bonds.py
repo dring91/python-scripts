@@ -21,7 +21,7 @@ def main():
   
   # read input file
   with open(args.input,'r') as file:
-    box, atoms, bonds = readConf(file)
+    types, box, atoms, bonds = readConf(file)
 
   # sort the atom array
   atoms = atoms[np.argsort(atoms[:,0])]
@@ -31,6 +31,8 @@ def main():
 
   # extract subarrays based on atomtype
   polymers = atoms[polyMask]
+  if args.entries == 9:
+    polymers[:,3:6] += polymers[:,6:9] * np.diff(box,axis=1).T
 
   ## calculate the appropriate box
   box = np.zeros((3,2))
@@ -38,30 +40,28 @@ def main():
   box[:,1] = polymers[:,3:6].max(0) + 0.5
 
   # reshape the extracted array by molecule
-  nBeads = len(polymers)
-  nChains = nBeads / args.length
-  polymers = polymers.reshape((nChains, args.length, args.entries))
+  polymers = polymers.reshape((-1, args.length, args.entries))
   fractional, integral = np.modf(polymers[:,:,1])
-  print sum(fractional), sum(integral)
+  print(sum(fractional), sum(integral))
 
   # calculate bond lengths
-  differences = polymers[:,1:,3:6] - polymers[:,:-1,3:6]
-  lengths = np.sqrt(np.einsum('ijk,ijk->ij',differences,differences))
-  lengths = lengths.reshape((args.length - 1) * nChains)
+  differences = np.diff(polymers[:,:,3:6],axis=1)
+  lengths = np.sqrt(np.sum(differences**2,axis=2))
+  lengths = lengths.flatten()
   end_to_end = differences.sum(1)
-  R = np.sqrt(np.einsum('ij,ij->i',end_to_end,end_to_end))
+  R = np.sqrt(np.sum(differences**2,axis=1))
 
-  #plt.plot(lengths)
-  #plt.show()
-  #plt.plot(R/np.sqrt(10))
-  #plt.show()
+  plt.plot(lengths)
+  plt.show()
+  plt.plot(R/np.sqrt(200))
+  plt.show()
 
   # check that bonds are numbered correctly
-  bonds = bonds.reshape((nChains, args.length - 1, 4))
+  bonds = bonds.reshape((-1, args.length - 1, 4))
   head = polymers[:,1:,0]
   tail = polymers[:,:-1,0]
-  print sum(bonds[:,:,2] - tail)
-  print sum(bonds[:,:,3] - head)
+  print(sum(bonds[:,:,2] - tail))
+  print(sum(bonds[:,:,3] - head))
 
   ## reshape the modified array so that it can be re-inserted
   #polymers = polymers.reshape((nBeads, args.entries))
