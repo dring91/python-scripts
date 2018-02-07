@@ -82,6 +82,7 @@ def main():
   parser.add_argument("--reflect",default=[],nargs='+',choices={'x','y','z'})
   parser.add_argument("-b", "--boundary", choices=['plane','cylinder','box'])
   parser.add_argument("-d","--density",type=float)
+  parser.add_argument("--title")
   args = parser.parse_args()
 
   # total number of lj beads in melt
@@ -152,26 +153,34 @@ def main():
 
   # massage data into output file
   atoms = np.zeros((total,9))
-  atoms[:,0] = np.arange(total)+1
+  numbers = np.arange(total)+1
+  atoms[:,0] = numbers
   #atoms[:,1] = np.repeat(np.arange(args.nChains)+1,args.nMon)
   chain = list(range(1,args.nMon//2+1)) + list(range(1,args.nMon - args.nMon//2 + 1)[::-1])
   atoms[:,1] = np.tile(chain,args.nChains)
   atoms[:,2] = types
   atoms[:,3:6] = coords
 
+  numbers = numbers.reshape((args.nChains,args.nMon))
   bonds = np.zeros((args.nChains * (args.nMon - 1), 4))
   bonds[:,0] = np.arange(args.nChains * (args.nMon - 1)) + 1
   bonds[:,1] = 1
-  numbers = np.arange(total).reshape((args.nChains,args.nMon)) + 1
   bonds[:,2] = numbers[:,:-1].reshape((args.nChains*(args.nMon-1)))
   bonds[:,3] = numbers[:,1:].reshape((args.nChains*(args.nMon-1)))
 
-  diff = coords[bonds[:,2].astype(int)-1] - coords[bonds[:,3].astype(int)-1]
+  angles = np.zeros((args.nChains * (args.nMon - 2), 5))
+  angles[:,0] = np.arange(args.nChains * (args.nMon - 2)) + 1
+  angles[:,1] = 1
+  angles[:,2] = numbers[:,:-2].reshape((args.nChains*(args.nMon-2)))
+  angles[:,3] = numbers[:,1:-1].reshape((args.nChains*(args.nMon-2)))
+  angles[:,4] = numbers[:,2:].reshape((args.nChains*(args.nMon-2)))
+
+  diff = coords[bonds[:,2].astype(int)-2] - coords[bonds[:,3].astype(int)-2]
   lengths = np.sqrt(diff[:,0]**2 + diff[:,1]**2 + diff[:,2]**2)
 
   # output coordinates
   #write_xyz(args.output, np.concatenate((np.ones((total,1)),coords), axis=1))
-  write_conf(args.output, atoms, bonds, box, {"atoms":1, "bonds":1})
+  write_conf(args.output, atoms, bonds, angles, box, {"atoms":1, "bonds":1, "angles":0}, title=args.title)
   #box[2] = (coords[:,2].min(), coords[:,2].max())
   write_traj(args.output, np.delete(atoms[:,:6],1,axis=1), box, mode='w')
   

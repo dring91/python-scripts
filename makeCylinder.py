@@ -15,7 +15,7 @@ def ring(r,n,period):
 
   return coords
 
-def makeCylinder(A, (r,h)):
+def makeCylinder(A,r,h):
 
   # need to calculate m and n (the number of sites in the axial and polar directions)
   m, n = int(h*np.sqrt(2/(np.sqrt(3)*A))), int(np.pi*r*np.sqrt(2*np.sqrt(3)/A))
@@ -37,20 +37,21 @@ def makeCylinder(A, (r,h)):
 
   return cylinder
 
-def makeFile(coords):
+def makeFile(coords,atomtype):
 
   nRows = coords.shape[0]
   info = np.zeros((nRows,9), dtype=int)
   info[:,0] = np.arange(nRows)+1
   info[:,1] = 1
-  info[:,2] = 3
+  info[:,2] = atomtype
 
   return info
 
 def main():
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('-o','--output',default="cylinder")
+  parser.add_argument('-o','--output')
+  parser.add_argument('-a','--area',type=float)
   parser.add_argument('-r','--radius',type=float)
   parser.add_argument('-l','--length',type=float,default=100)
   parser.add_argument('-t','--atomtype',default=3,type=int)
@@ -59,10 +60,12 @@ def main():
   args = parser.parse_args()
 
   a, b, c, atomRadius, nPerPart = 12.5, 12.5, 25, 1, 4684
-  areaDensity = 4*np.pi*(((a*b)**1.6 + (a*c)**1.6 + (b*c)**1.6)/3)**(1/1.6)/nPerPart 
+  e = np.sqrt(1-(a/c)**2)
+  areaDensity = 2*np.pi*a**2*(1+c*np.arcsin(e)/(a*e))/nPerPart
+  if args.area is not None: areaDensity = args.area
 
   # generate a cylinder with radius R and length L
-  cylinder = makeCylinder(areaDensity, (args.radius,args.length))
+  cylinder = makeCylinder(areaDensity,args.radius,args.length)
   ###### VERY IMPORTANT ######
   # the rounding step is very important to getting a proper shape. 
   # open question: is this inherent to the calculation or is it an error 
@@ -72,7 +75,7 @@ def main():
   box = makeBox(3, np.array([1.0,1.0,0]), cylinder)
 
   # generate indices, molecule, and atom types
-  info = makeFile(cylinder)
+  info = makeFile(cylinder,args.atomtype)
   atoms = info.astype('|S10')
   # combine coordinate and index information
   atoms[:,3:6] = cylinder.astype('|S10')
@@ -84,6 +87,11 @@ def main():
     write_traj(args.output+'_out', np.delete(atoms[:,:6],1,axis=1).astype(float), box, mode='w')
   if 'xyz' in args.formats:
     write_xyz(args.output+'_out', atoms[:,2:])
+
+  ## print out the specific surface areas for both structures
+  specific_area = 2*np.pi*args.radius*args.length/len(cylinder)
+  specific_area = 2*np.pi*args.radius*np.diff(box[2])/len(cylinder)
+  print('[cylinder]\n  a = {}\n[particle]\n  a = {}\n[error]\n  abs = {}\n  rel = {}'.format(specific_area, areaDensity, specific_area-areaDensity, (specific_area-areaDensity)/areaDensity*100))
 
 if __name__ == '__main__':
   main()
