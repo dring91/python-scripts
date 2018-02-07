@@ -22,7 +22,7 @@ def unwrap(coords, box):
 def makeBox(dims, padding, *args):
   box = np.zeros((dims,2))
   if len(args) == 0:
-    print "No atoms available to make box"
+    print("No atoms available to make box")
   elif len(args) == 1:
     box[:,0] = args[0].min(0)
     box[:,1] = args[0].max(0)

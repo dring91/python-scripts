@@ -1,5 +1,5 @@
 import numpy as np
-import h5py as h5
+#import h5py as h5
 #import sqlite3 as sql
 
 def readH5MD(file):
@@ -7,27 +7,42 @@ def readH5MD(file):
 
 def readConf(file, cast=True):
 
-  atoms = []
   box = []
+  atoms = []
+  velocities = []
   bonds = []
+  angles = []
   header = 'header'
+  types = {}
   for line in file:
     L = line.split()
-    if len(L) > 0 and L[0] in ['Atoms','Velocities','Bonds']:
+    if len(L) > 0 and ' '.join(L[1:3]) == 'atom types':
+      types['atoms'] = int(L[0])
+    if len(L) > 0 and ' '.join(L[1:3]) == 'bond types':
+      types['bonds'] = int(L[0])
+    if len(L) > 0 and ' '.join(L[1:3]) == 'angle types':
+      types['angles'] = int(L[0])
+    if len(L) > 0 and L[0] in ['Atoms','Velocities','Bonds','Angles']:
       header = L[0]
     if len(L) > 0 and L[-1] in ['xhi','yhi','zhi']:
       box.append(L[:2])
     elif len(L) > 4 and header == 'Atoms':
       atoms.append(L)
+    elif len(L) > 4 and header == 'Velocities':
+      velocities.append(L)
     elif len(L) > 3 and header == 'Bonds':
       bonds.append(L)
+    elif len(L) > 3 and header == 'Angles':
+      angles.append(L)
 
   if cast:
     box = np.array(box,dtype=float)
     atoms = np.array(atoms,dtype=float)
+    velocities = np.array(velocities,dtype=float)
     bonds = np.array(bonds,dtype=int)
+    angles = np.array(angles,dtype=int)
       
-  return box, atoms, bonds
+  return types, box, atoms, velocities, bonds, angles
 
 def tupleConf(file, cast=True):
 
@@ -73,6 +88,7 @@ def readTrj(file, nCols=5):
         box = np.fromfile(file, float, 6, ' ')
         box = box.reshape((3,2))
       elif item == 'ATOMS':
+        nCols = len(L[2:])
         atoms = np.fromfile(file, float, nAtoms*nCols, ' ')
         atoms = atoms.reshape((nAtoms, nCols))
         break
@@ -128,17 +144,24 @@ def readSQL(cursor,step):
 
   return time, box, atoms
 
-def write_traj(filename, atoms, box, time=0, mode='w'):
-  atoms[:,2:5] = (atoms[:,2:5] - box[:,0]) / (box[:,1] - box[:,0])
+def write_traj(filename, atoms, box, time=0, mode='w', scaled=False, bnds=('pp','pp','pp')):
+  if scaled: 
+    atoms[:,2:5] = (atoms[:,2:5] - box[:,0]) / (box[:,1] - box[:,0])
+    x,y,z = 'xs','ys','zs'
+  else:
+    x,y,z = 'x', 'y', 'z'
   atoms = np.nan_to_num(atoms)
   with open(filename+'.lammpstrj',mode) as file:
     file.write("ITEM: TIMESTEP\n")
     file.write(str(time)+'\n')
     file.write("ITEM: NUMBER OF ATOMS\n")
     file.write(str(len(atoms))+'\n')
-    file.write("ITEM: BOX BOUNDS pp pp ss\n")
+    file.write("ITEM: BOX BOUNDS {} {} {}\n".format(*bnds))
+  with open(filename+'.lammpstrj','ab') as file:
     np.savetxt(file, box, fmt="%.6f")
-    file.write("ITEM: ATOMS id type xs ys zs\n")
+  with open(filename+'.lammpstrj','a') as file:
+    file.write("ITEM: ATOMS id type {} {} {}\n".format(x,y,z))
+  with open(filename+'.lammpstrj','ab') as file:
     np.savetxt(file, atoms, fmt="%d %d %f %f %f")
 
 def write_xyz(filename, atoms, time=0, mode='w'):
@@ -152,8 +175,9 @@ def write_xyz(filename, atoms, time=0, mode='w'):
 def write_conf(filename,
                atoms,
                bonds=[],
+               angles=[],
                box=[[-50,50],[-50,50],[0,100]],
-               types={"atoms":1, "bonds":0},
+               types={"atoms":1, "bonds":0, "angles":0},
                masses=[1], 
                title=''):
   
@@ -193,37 +217,31 @@ def write_conf(filename,
     
     # write number of atoms and number of bonds
     otp.write(str(len(atoms))+' atoms\n')
-    if types["bonds"] > 0:
-      otp.write(str(len(bonds))+' bonds\n')
+    if types["bonds"] > 0: otp.write(str(len(bonds))+' bonds\n')
+    if types["angles"] > 0: otp.write(str(len(angles))+' angles\n')
 
     # skip line
     otp.write('\n')
     
     # write types
     otp.write(str(types["atoms"])+' atom types\n')
-    if types["bonds"] > 0:
-      otp.write(str(types["bonds"])+' bond types\n')
+    if types["bonds"] > 0: otp.write(str(types["bonds"])+' bond types\n')
+    if types["angles"] > 0: otp.write(str(types["angles"])+' angle types\n')
     
     # skip line
     otp.write('\n')
     
     # write box dimensions
-    dim = 'xyz'
-    try:
-      [otp.write('%s %s %slo %shi\n' % (box[l][0],box[l][1],dim[l],dim[l])) for l in range(len(box))]    
-    except TypeError:
-      [otp.write('%f %f %slo %shi\n' % (box[l][0],box[l][1],dim[l],dim[l])) for l in range(len(box))]    
-
-     # skip line
+    dims = 'xyz'
+    [otp.write('{1:.4f} {2:.4f} {0}lo {0}hi\n'.format(*dim)) for dim in zip(dims,*box.T)]
+    
+    # skip line
     otp.write('\n')
 
     # write masses
     otp.write('Masses\n')
     otp.write('\n')
-    try:
-      [otp.write('%s %s\n' % (i+1,masses[i])) for i in range(len(masses))]
-    except TypeError:
-      [otp.write('%d %d\n' % (i+1,masses[i])) for i in range(len(masses))]
+    [otp.write('{} {}\n'.format(i+1,mass)) for i,mass in enumerate(masses)]
 
     # skip line    
     otp.write('\n')
@@ -231,22 +249,28 @@ def write_conf(filename,
     # write atoms
     otp.write('Atoms\n')
     otp.write('\n')
-    try:
-      [otp.write(' '.join(line)+'\n') for line in atoms]
-    except TypeError:
-      try:
-        [otp.write('%d %d %d %f %f %f\n' % tuple(line)) for line in atoms]
-      except TypeError:
-        [otp.write('%d %d %d %f %f %f %d %d %d\n' % tuple(line)) for line in atoms]
+  with open(filename+'.conf','ab') as otp: np.savetxt(otp, atoms, fmt='%d %d %d %f %f %f %d %d %d')
+    #[otp.write('{} {} {} {} {} {}\n'.format(*line)) for line in atoms]
 
-    if types["bonds"] > 0:
+  if types["bonds"] > 0:
+    with open(filename+'.conf','a') as otp:  
       # skip line    
       otp.write('\n')
       
       # write bonds
       otp.write('Bonds\n')
       otp.write('\n')
-      try:
-        [otp.write(' '.join(line)+'\n') for line in bonds]
-      except TypeError:
-        [otp.write('%d %d %d %d\n' % tuple(line)) for line in bonds]
+    with open(filename+'.conf','ab') as otp:  
+      np.savetxt(otp, bonds, fmt='%d')
+      #[otp.write('{} {} {} {}\n'.format(*line)) for line in bonds]
+  if types["angles"] > 0:
+    with open(filename+'.conf','a') as otp:  
+      # skip line    
+      otp.write('\n')
+      
+      # write bonds
+      otp.write('Angles\n')
+      otp.write('\n')
+    with open(filename+'.conf','ab') as otp:  
+      np.savetxt(otp, angles, fmt='%d')
+      #[otp.write('{} {} {} {}\n'.format(*line)) for line in bonds]
